@@ -1,0 +1,76 @@
+# =============================================================
+# .gitignore
+# 이 저장소는 PUBLIC(공개)입니다.
+# → 시크릿(API 키), 확장 서명 키, 참가자 개인정보는 절대 커밋 금지.
+# → 커밋 전 `git status`로 아래 파일이 스테이징되지 않았는지 확인.
+# =============================================================
+
+# ---- 1. 시크릿 · 환경변수 (최우선) ----
+# API 키는 .env 에만 두고, 저장소에는 이름만 담은 .env.example 을 커밋한다.
+.env
+.env.*
+!.env.example
+!.env.template
+
+# 확장 프로그램 서명용 개인키 — 노출 시 타인이 업데이트 서명 가능 (절대 공개 금지)
+*.pem
+
+# ---- 2. 파일럿테스트 참가자 개인정보 (공개 금지) ----
+# 참가자 이름·연락처·면담 녹음·전사본은 이 저장소에 두지 말고 별도 보관한다.
+data/participants/
+data/raw/
+recordings/
+transcripts/
+*.participant.*
+
+# ---- 3. Node.js ----
+node_modules/
+.npm/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# ---- 4. 빌드 산출물 ----
+dist/
+build/
+out/
+release/
+coverage/
+*.tsbuildinfo
+
+# 프레임워크별 (사용하는 것만 남겨도 됨)
+.next/
+.vite/
+.parcel-cache/
+.cache/
+
+# ---- 5. 확장 프로그램 패키징 ----
+*.crx
+
+# ---- 6. Python (스크립트·툴링용) ----
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+
+# ---- 7. OS · 에디터 ----
+.DS_Store
+Thumbs.db
+Desktop.ini
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# ---- 8. 로그 · 임시 ----
+*.log
+logs/
+tmp/
+temp/
+
+# ---- 9. 배포 캐시 ----
+.vercel/
+.netlify/

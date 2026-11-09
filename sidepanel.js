@@ -19,6 +19,7 @@ analyzeButton.addEventListener('click', async () => {
   if (articleSession && !confirm('현재 훈련 종료 후 작성 내용을 삭제하고 새 읽기 전 준비를 시작합니다. 같은 글을 다시 연결해도 새 시도이며 이전 시도의 연속 수행이나 순수 인출 성공으로 취급하지 않습니다. 계속할까요?')) return;
   recommendationGate.reset();
   if (typeof resetPanelSubmission === 'function') resetPanelSubmission();
+  if (typeof resetPilotAi === 'function') resetPilotAi();
   if (typeof localPreviewReset === 'function') localPreviewReset();
   document.getElementById('mock-result').textContent = '';
   document.getElementById('mock-result').hidden = true;
@@ -60,6 +61,7 @@ analyzeButton.addEventListener('click', async () => {
     document.getElementById('fallback').textContent = response.fallback ? '주의: 기사 영역을 찾지 못해 페이지 전체 텍스트를 사용했습니다.' : '';
     resultElement.hidden = false;
     document.getElementById('mock-recommend').disabled = false;
+    if (typeof pilotAiEnable === 'function') pilotAiEnable();
     showStatus('본문을 연결했습니다. 원문을 직접 읽고 정리하세요.');
   } catch (error) {
     articleSession = null;
@@ -113,6 +115,7 @@ document.getElementById('start-reading').addEventListener('click', async () => {
     if (current.url !== articleSession.url || active?.id !== articleSession.tabId) throw new Error('연결한 글이 변경되었거나 다른 탭이 열려 있습니다. 원래 글로 돌아가거나 새 글을 연결하세요.');
     recommendationGate.startReading();
     if (typeof localPreviewStartReading === 'function') localPreviewStartReading();
+    if (typeof pilotAiStartReading === 'function') pilotAiStartReading();
     document.getElementById('mock-token').value = '';
     document.getElementById('mock-recommend').disabled = true;
     document.getElementById('mock-result').hidden = true;

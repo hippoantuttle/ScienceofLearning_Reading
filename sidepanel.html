@@ -19,6 +19,7 @@
   <script src="submission-config.local.js" defer></script>
   <script src="sidepanel.js" defer></script>
   <script src="submission-panel.js" defer></script>
+  <script src="pilot-ai-panel.js" defer></script>
 </head>
 <body><main>
   <h1>한국어 독해 훈련</h1>
@@ -38,6 +39,17 @@
       <p>동의하지 않아도 자료 없이 수동으로 계속할 수 있습니다.</p>
     </section>
     <p>로컬 모의 서버에는 빈 요청만 전송합니다. 기사와 작성 답안은 보내지 않습니다. 실제 AI 결과가 아닙니다.</p>
+    <section aria-labelledby="pilot-ai-heading">
+      <h3 id="pilot-ai-heading">AI 읽기 전 추천 (파일럿)</h3>
+      <p>로그인한 초대 참가자만 사용합니다. 현재 단계는 서버에 고정된 가상 예문으로 시험하며, 읽은 글·URL·답안은 전송하지 않고 결과도 읽은 글과 무관합니다. 읽기를 시작하면 요청할 수 없고, 한 번만 요청할 수 있습니다.</p>
+      <label for="ai-email">이메일</label><input id="ai-email" type="email" autocomplete="username">
+      <label for="ai-password">비밀번호</label><input id="ai-password" type="password" autocomplete="current-password">
+      <button id="ai-login" type="button">로그인</button>
+      <button id="ai-recommend" type="button" disabled>AI 추천 요청 (가상 예문)</button>
+      <div id="ai-result" hidden aria-live="polite"></div>
+      <p id="ai-status" role="status"></p>
+      <p>요청하지 않아도 자료 없이 계속할 수 있습니다.</p>
+    </section>
     <label for="mock-token">로컬 테스트 토큰 (이 패널에서만 사용)</label><input id="mock-token" type="password" autocomplete="off">
     <button id="mock-recommend" type="button">로컬 모의 응답 요청</button>
     <div id="mock-result" hidden aria-live="polite"></div>

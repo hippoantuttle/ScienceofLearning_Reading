@@ -102,33 +102,36 @@ export function createPilotWorker({ fetchImpl = fetch, providerFetch = fetch } =
       if (body === null) return reply(413, { error: 'too_large' });
       if (!body || typeof body !== 'object' || Array.isArray(body) || Object.keys(body).length !== 0) return reply(400, { error: 'invalid' });
 
+      // 실패 단계를 구분하는 안전한 코드만 응답한다(토큰·키·내부 메시지는 응답에 넣지 않는다).
+      const fail = (stage, status, code, error) => { console.error('[pilot-ai]', stage, error?.name, error?.message); return reply(status, { error: code }); };
+      // Workers 런타임은 redirect:'error'를 지원하지 않는다. 'manual'이면 3xx는 ok가 아니므로 실패로 처리된다.
       let userId;
       try {
         const upstream = { apikey: cfg.apiKey, Authorization: auth };
-        const identity = await fetchImpl(cfg.base + '/auth/v1/user', { method: 'GET', headers: upstream, redirect: 'error' });
+        const identity = await fetchImpl(cfg.base + '/auth/v1/user', { method: 'GET', headers: upstream, redirect: 'manual' });
         if (!identity.ok) return reply(401, { error: 'unauthorized' });
         const user = await identity.json();
         if (typeof user?.id !== 'string' || !user.id) return reply(401, { error: 'unauthorized' });
         userId = user.id;
         const member = await fetchImpl(cfg.base + '/rest/v1/rpc/is_active_pilot_member', {
-          method: 'POST', headers: { ...upstream, 'Content-Type': 'application/json' }, body: '{}', redirect: 'error'
+          method: 'POST', headers: { ...upstream, 'Content-Type': 'application/json' }, body: '{}', redirect: 'manual'
         });
         if (!member.ok) return reply(503, { error: 'membership_unavailable' });
         if ((await member.json()) !== true) return reply(403, { error: 'inactive' });
-      } catch { return reply(503, { error: 'unavailable' }); }
+      } catch (error) { return fail('auth', 503, 'auth_unreachable', error); }
 
       try {
         const stub = env.PILOT_BUDGET.get(env.PILOT_BUDGET.idFromName('pilot'));
         const reservation = await stub.fetch(new Request('https://budget.internal/', { method: 'POST', headers: { 'X-User-Id': userId } }));
         if (reservation.status === 429) return reply(429, { error: 'limit' });
-        if (!reservation.ok) return reply(503, { error: 'unavailable' });
-      } catch { return reply(503, { error: 'unavailable' }); }
+        if (!reservation.ok) return fail('budget', 503, 'budget_unavailable', new Error('status ' + reservation.status));
+      } catch (error) { return fail('budget', 503, 'budget_unavailable', error); }
 
       // 예약은 공급자 호출 전에 소모된다. 실패·timeout 후 자동 재시도는 하지 않는다.
       try {
         const data = await callProvider(env.DEEPSEEK_API_KEY, providerFetch, { withUsage: true });
         return reply(200, { kind: 'pilot', ...data });
-      } catch { return reply(502, { error: 'provider' }); }
+      } catch (error) { return fail('provider', 502, 'provider', error); }
     }
   };
 }

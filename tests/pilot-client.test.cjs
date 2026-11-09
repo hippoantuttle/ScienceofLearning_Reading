@@ -27,3 +27,11 @@ test('상태별 오류 메시지와 잘못된 응답·timeout 처리',async()=>{
  const slow=(_u,{signal})=>new Promise((_,rej)=>signal.addEventListener('abort',()=>rej(new Error('aborted'))));
  await assert.rejects(requestPilot('t',URL_OK,{fetchImpl:slow,timeoutMs:20}),/시간/);
 });
+test('서버 오류 코드는 안전한 문구로 바뀌고 알 수 없는 코드는 상태 코드 기준 문구를 쓴다',async()=>{
+ const body=(status,error)=>async()=>({ok:false,status,json:async()=>({error})});
+ for(const [status,code,re] of [[503,'auth_unreachable',/로그인 확인/],[503,'budget_unavailable',/사용량/],[503,'disabled',/꺼져/],[503,'configuration',/설정/],[502,'provider',/공급자/],[403,'forbidden',/허용하지/],[403,'inactive',/사용할 수 없는/],[401,'unauthorized',/다시 로그인/],[429,'limit',/한도/]])
+  await assert.rejects(requestPilot('t',URL_OK,{fetchImpl:body(status,code)}),re);
+ await assert.rejects(requestPilot('t',URL_OK,{fetchImpl:body(503,'<script>x</script>')}),/요청이 실패/);
+ await assert.rejects(requestPilot('t',URL_OK,{fetchImpl:async()=>({ok:false,status:503,json:async()=>{throw new Error('bad')}})}),/요청이 실패/);
+ const {pilotMessages}=require('../ai-client.js');assert.ok(pilotMessages.includes('AI 추천 사용량 확인에 실패했습니다.'));
+});

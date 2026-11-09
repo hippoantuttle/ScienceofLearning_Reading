@@ -20,6 +20,7 @@ function budgetNamespace(env = {}) {
 function supabase(users, calls = []) {
   return async (url, init = {}) => {
     calls.push(url);
+    assert.equal(init.redirect, 'manual'); // Workers 런타임은 'error'를 지원하지 않아 TypeError가 난다
     const token = (init.headers?.Authorization || '').replace('Bearer ', '');
     const user = users[token];
     if (url.endsWith('/auth/v1/user')) return user ? Response.json({ id: user.id }) : new Response('{}', { status: 401 });
@@ -145,4 +146,24 @@ test('한도 설정 파싱: 기본값, 잘못된 값', () => {
   assert.deepEqual(limitsFrom({}), { user: 5, global: 100 });
   assert.equal(limitsFrom({ PILOT_USER_DAILY_LIMIT: 'abc' }), null);
   assert.equal(limitsFrom({ PILOT_GLOBAL_DAILY_LIMIT: '-1' }), null);
+});
+
+test('실패 단계별로 구분되는 안전한 오류 코드를 반환하고 비밀을 응답에 넣지 않는다', async () => {
+  const quiet = console.error; const logs = []; console.error = (...a) => logs.push(a.join(' '));
+  try {
+    // 로그인 확인 서비스 연결 실패
+    const down = setup(); const worker = createPilotWorker({ fetchImpl: async () => { throw new Error('network down'); }, providerFetch: provider(down.counter) });
+    const r1 = await worker.fetch(new Request('https://ai.test/recommend', { method: 'POST', headers: { origin: ORIGIN, Authorization: 'Bearer secret-token' }, body: '{}' }), down.env);
+    assert.equal(r1.status, 503); assert.deepEqual(await r1.json(), { error: 'auth_unreachable' });
+    // 사용량 저장소 오류
+    const s2 = setup(); s2.env.PILOT_BUDGET = { idFromName: () => 1, get: () => ({ fetch: async () => { throw new Error('do failed'); } }) };
+    const r2 = await s2.call('tokA'); assert.equal(r2.status, 503); assert.deepEqual(await r2.json(), { error: 'budget_unavailable' });
+    const s3 = setup(); s3.env.PILOT_BUDGET = { idFromName: () => 1, get: () => ({ fetch: async () => new Response(null, { status: 503 }) }) };
+    assert.deepEqual(await (await s3.call('tokA')).json(), { error: 'budget_unavailable' });
+    // 공급자 실패
+    const s4 = setup({ providerFetch: async () => { throw new Error('offline'); } });
+    const r4 = await s4.call('tokA'); assert.equal(r4.status, 502); assert.deepEqual(await r4.json(), { error: 'provider' });
+    assert.ok(logs.some(l => /auth/.test(l)) && logs.some(l => /budget/.test(l)));
+    assert.ok(logs.every(l => !/secret-token|fake|sb_publishable/.test(l)));
+  } finally { console.error = quiet; }
 });

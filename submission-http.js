@@ -22,6 +22,19 @@ const SubmissionHttp=(()=>{
    if(!response.ok)throw new Error(`재조회 실패 (${response.status})`);return response.json();
   }};
  }
- return {createHttpAdapter};
+ // 멤버십 확인: Chrome은 확장 페이지의 GET에 Origin을 붙이지 않아 제출 Worker의 GET 확인이 막히므로,
+ // 로그인 토큰으로 Supabase RPC를 POST로 직접 호출한다. 저장 시에는 Worker가 다시 확인한다.
+ function createMembershipCheck({baseUrl,publicKey,fetchImpl=fetch}){
+  let u;try{u=new URL(baseUrl)}catch{throw new Error('인증 주소 오류')}
+  if(u.protocol!=='https:'||u.username||u.password||u.pathname!=='/'||u.search||u.hash||typeof publicKey!=='string'||!publicKey||publicKey.startsWith('sb_secret_'))throw new Error('인증 설정 오류');
+  return async token=>{
+   if(typeof token!=='string'||!token.trim())throw new Error('로그인이 필요합니다.');
+   const response=await fetchImpl(u.origin+'/rest/v1/rpc/is_active_pilot_member',{method:'POST',headers:{apikey:publicKey,Authorization:`Bearer ${token}`,'Content-Type':'application/json'},body:'{}',redirect:'error',cache:'no-store',credentials:'omit'});
+   if(response.status===401||response.status===403)return false;
+   if(!response.ok)throw new Error('회원 확인에 실패했습니다.');
+   return (await response.json())===true;
+  };
+ }
+ return {createHttpAdapter,createMembershipCheck};
 })();
 if(typeof module!=='undefined')module.exports=SubmissionHttp;

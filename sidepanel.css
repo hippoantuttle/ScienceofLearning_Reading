@@ -1,0 +1,13 @@
+:root { color-scheme: light dark; font-family: system-ui, sans-serif; line-height: 1.5; }
+body { margin: 0; }
+main { padding: 1rem; max-width: 42rem; }
+h1 { font-size: 1.35rem; }
+h2 { font-size: 1.05rem; }
+nav ol { padding-left: 1.5rem; }
+section { border-top: 1px solid currentColor; margin-top: 1rem; padding-top: .5rem; }
+button, textarea, select { font: inherit; padding: .5rem; box-sizing: border-box; }
+label { display: block; font-weight: 600; margin-top: .8rem; }
+textarea, select { width: 100%; }
+button { margin: .5rem .25rem .5rem 0; }
+#status { border: 1px solid currentColor; padding: .75rem; }
+#form-error:not(:empty) { border-left: .25rem solid #d34b42; padding: .5rem; }

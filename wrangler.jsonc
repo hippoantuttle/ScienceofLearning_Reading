@@ -1,0 +1,9 @@
+{
+  "name": "reading-prereading-experiment",
+  "main": "server/ai/worker.mjs",
+  "compatibility_date": "2026-01-01",
+  "workers_dev": true,
+  "vars": { "EXPERIMENT_ENABLED": "false" },
+  "durable_objects": { "bindings": [{ "name": "BUDGET", "class_name": "Budget" }] },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["Budget"] }]
+}

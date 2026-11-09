@@ -74,3 +74,6 @@ temp/
 # ---- 9. 배포 캐시 ----
 .vercel/
 .netlify/
+.wrangler/
+.dev.vars
+.dev.vars.*

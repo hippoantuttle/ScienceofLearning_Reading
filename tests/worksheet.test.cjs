@@ -1,0 +1,62 @@
+const {test}=require('node:test');
+const assert=require('node:assert/strict');
+const fs=require('node:fs');
+const path=require('node:path');
+const vm=require('node:vm');
+const worksheet=require('../worksheet.js');
+const AIContract=require('../ai-client.js');
+const valid={main:'중심 생각',primary:'핵심 정보',support:'보조 정보',relation:'관계 설명'};
+test('필수 입력은 공백만으로 통과할 수 없다',()=>{
+ for(const key of Object.keys(valid)) assert.equal(worksheet.validate({...valid,[key]:'  '}).valid,false,key);
+ assert.equal(worksheet.validate(valid).valid,true);
+});
+test('HTML 형식 텍스트는 정오 검사 없이 일반 입력으로 허용한다',()=>{
+ assert.equal(worksheet.validate({...valid,main:'<img src=x onerror=alert(1)>'}).valid,true);
+});
+test('워크시트의 빈 입력과 세 가지 수동 선택지를 제공한다',()=>{
+ const html=fs.readFileSync(path.join(__dirname,'..','sidepanel.html'),'utf8');
+ for(const value of ['claim','cause','problem']) assert.match(html,new RegExp(`value="${value}"`));
+ for(const id of ['main-idea','primary','support','relation']) assert.match(html,new RegExp(`<textarea id="${id}"[^>]*></textarea>`));
+ assert.match(html,/id="to-retell"/);
+});
+
+test('모의 DOM에서 패널 이벤트 핸들러가 유형 전환·뒤로 가기·새 글 취소 시 입력 유지', async()=>{
+ const ids=['mock-token','mock-recommend','mock-result','mock-status','to-retell','retell-input','review-view','retell-view','revisit-note','back-to-reading','to-review','end-training','finish','finish-status','status','analyze','article-result','worksheet','form-error','reading','preparation','structure','primary-label','support-label','prior','counts','fallback','start-reading','back','main-idea','primary','support','relation'];
+ const elements=Object.fromEntries(ids.map(id=>[id,{id,value:'',hidden:false,textContent:'',handlers:{},setAttribute(){},focus(){},addEventListener(type,fn){this.handlers[type]=fn}}]));
+ elements.structure.value='claim';
+ elements.worksheet.reset=()=>{ for(const id of ['main-idea','primary','support','relation']) elements[id].value=''; elements.structure.value='claim'; };
+ const tab={id:10,windowId:5,url:'https://example.invalid/article'};
+ let active=tab; const sent=[];
+ const chrome={runtime:{sendMessage:async()=>({status:'error'})},windows:{getCurrent:async()=>({id:5})},tabs:{query:async()=>[active],get:async()=>tab,connect:()=>({onDisconnect:{addListener(){}},disconnect(){}}),sendMessage:async(_id,msg)=>{sent.push(msg);return msg.action==='EXTRACT_ARTICLE'?{status:'success',text:'가상 본문',charCount:5,wordCount:2,fallback:false,token:'sample'}:{status:'success',enabled:msg.enabled}}},scripting:{executeScript:async()=>{}}};
+ const source=fs.readFileSync(path.join(__dirname,'..','sidepanel.js'),'utf8');
+ const ctx={document:{getElementById:id=>elements[id]},chrome,URL,Worksheet:worksheet,AIContract,confirm:()=>false};
+ vm.runInNewContext(source,ctx);
+ await elements.analyze.handlers.click();
+ await elements['start-reading'].handlers.click();
+ assert.equal(elements.reading.hidden,false);
+ for(const [id,value] of Object.entries({'main-idea':'내 생각',primary:'정보 하나',support:'정보 둘',relation:'연결'})) elements[id].value=value;
+ elements.structure.value='cause';elements.structure.handlers.change();
+ assert.equal(elements['primary-label'].textContent,'원인');
+ assert.equal(elements.primary.value,'정보 하나');
+ elements.back.handlers.click();
+ assert.equal(elements.preparation.hidden,false);
+ await elements['start-reading'].handlers.click();
+ assert.equal(elements['main-idea'].value,'내 생각');
+ assert.equal(elements.support.value,'정보 둘');
+ elements.back.handlers.click();
+ await elements.analyze.handlers.click();
+ assert.equal(elements.relation.value,'연결');
+ assert.equal(elements.structure.value,'cause');
+ assert.equal(elements['article-result'].hidden,false);
+ await elements['start-reading'].handlers.click();
+ active={id:11,windowId:5,url:'https://example.invalid/other'};
+ await elements['to-retell'].handlers.click();
+ assert.equal(sent.filter(m=>m.action==='TOGGLE_BLUR' && m.enabled).length,0);
+ active=tab;
+ await elements['to-retell'].handlers.click();
+ assert.equal(elements['retell-view'].hidden,false);
+ assert.equal(sent.filter(m=>m.action==='TOGGLE_BLUR' && m.enabled).length,1);
+ await elements['back-to-reading'].handlers.click();
+ assert.equal(elements.reading.hidden,false);
+ assert.equal(sent.filter(m=>m.action==='TOGGLE_BLUR' && !m.enabled).length>=1,true);
+});

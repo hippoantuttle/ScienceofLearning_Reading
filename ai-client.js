@@ -35,6 +35,25 @@ const AIContract = (() => {
     } catch (error) { if (timedOut) throw new Error('로컬 테스트 서버 응답 시간이 초과되었습니다.'); throw error; }
     finally { clearTimeout(timer); }
   }
-  return {validate, createGate, requestMock};
+  // 파일럿 Worker용: 로그인 액세스 토큰과 빈 요청만 전송한다. endpoint는 https 또는 loopback만 허용한다.
+  async function requestPilot(accessToken, endpoint, {fetchImpl = fetch, timeoutMs = 15000} = {}) {
+    if (typeof accessToken !== 'string' || !accessToken) throw new Error('로그인이 필요합니다.');
+    let url; try { url = new URL(endpoint); } catch { throw new Error('AI 서버 주소가 올바르지 않습니다.'); }
+    const loopback = url.protocol === 'http:' && ['127.0.0.1','[::1]','localhost'].includes(url.hostname);
+    if ((url.protocol !== 'https:' && !loopback) || url.username || url.password || url.search || url.hash || url.pathname !== '/recommend') throw new Error('AI 서버 주소가 올바르지 않습니다.');
+    const controller = new AbortController(); let timedOut = false;
+    const timer = setTimeout(() => { timedOut = true; controller.abort(); }, timeoutMs);
+    try {
+      const response = await fetchImpl(url.href, {method:'POST', headers:{'Content-Type':'application/json',Authorization:`Bearer ${accessToken}`}, body:'{}', credentials:'omit', cache:'no-store', redirect:'error', signal:controller.signal});
+      if (response.status === 401 || response.status === 403) throw new Error('AI 추천을 사용할 수 없는 계정입니다.');
+      if (response.status === 429) throw new Error('오늘 AI 추천 사용 한도에 도달했습니다.');
+      if (!response.ok) throw new Error('AI 추천 서버 요청이 실패했습니다.');
+      const result = await response.json();
+      if (result?.kind !== 'pilot' || !validate(result.recommendation)) throw new Error('AI 응답 형식이 올바르지 않습니다.');
+      return result.recommendation;
+    } catch (error) { if (timedOut) throw new Error('AI 추천 서버 응답 시간이 초과되었습니다.'); throw error; }
+    finally { clearTimeout(timer); }
+  }
+  return {validate, createGate, requestMock, requestPilot};
 })();
 if (typeof module !== 'undefined') module.exports = AIContract;

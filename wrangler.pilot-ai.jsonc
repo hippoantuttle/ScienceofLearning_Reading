@@ -1,0 +1,17 @@
+{
+  // 파일럿 AI 추천 Worker. 배포·Secret 설정·활성화는 사용자 승인 후에만 한다.
+  // Secret(DEEPSEEK_API_KEY, SUPABASE_PUBLISHABLE_KEY)은 wrangler secret 또는 로컬 .dev.vars에만 둔다.
+  "name": "reading-ai-pilot",
+  "main": "server/ai/pilot-worker.mjs",
+  "compatibility_date": "2026-01-01",
+  "workers_dev": true,
+  "vars": {
+    "SUPABASE_URL": "https://mxhlxenfboiaywyhgyqs.supabase.co",
+    "ALLOWED_ORIGIN": "chrome-extension://jenapgoakhnmlmjcdnkfakkkgjobbfbb",
+    "PILOT_AI_ENABLED": "false",
+    "PILOT_USER_DAILY_LIMIT": "5",
+    "PILOT_GLOBAL_DAILY_LIMIT": "100"
+  },
+  "durable_objects": { "bindings": [{ "name": "PILOT_BUDGET", "class_name": "PilotBudget" }] },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["PilotBudget"] }]
+}

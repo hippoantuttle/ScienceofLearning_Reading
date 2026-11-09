@@ -1,0 +1,3 @@
+const {test}=require('node:test');const assert=require('node:assert/strict');const {createLogin}=require('../submission-auth.js');
+test('로그인은 지정된 HTTPS 인증 서버에만 전송하고 토큰을 반환한다',async()=>{let request;const login=createLogin({baseUrl:'https://example.invalid',publicKey:'publishable',fetchImpl:async(url,opt)=>{request={url,opt};return {ok:true,json:async()=>({access_token:'token'})}}});assert.equal(await login('a@example.invalid','fake'),'token');assert.equal(request.url,'https://example.invalid/auth/v1/token?grant_type=password');assert.equal(request.opt.headers.apikey,'publishable');assert.equal(request.opt.redirect,'error')});
+test('서버 비밀 키는 거부한다',()=>{assert.throws(()=>createLogin({baseUrl:'https://example.invalid',publicKey:'sb_secret_fake'}));});

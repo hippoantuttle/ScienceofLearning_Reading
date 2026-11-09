@@ -1,0 +1,6 @@
+const {test}=require('node:test');const assert=require('node:assert/strict');const {run}=require('../scripts/verify-worker-local.cjs');
+test('가상 Worker 검증 도구는 중복·조회·대상 삭제를 확인한다',async()=>{
+ const env={SUPABASE_URL:'https://mxhlxenfboiaywyhgyqs.supabase.co',SUPABASE_ANON_KEY:'fake',SUPABASE_SERVICE_ROLE_KEY:'fake-admin',SUPABASE_TEST_EMAIL_A:'fixture@example.invalid',SUPABASE_TEST_PASSWORD_A:'fake'};
+ let saved;const upstream=async(url,opt)=>{if(url.includes('/auth/v1/token'))return Response.json({access_token:'test-user',user:{id:'fixture-owner'}});if(url.includes('/auth/v1/user'))return Response.json({id:'fixture-owner'});if(url.includes('/rest/v1/rpc/is_active_pilot_member'))return Response.json(true);if(opt.method==='DELETE'){saved=null;return new Response(null,{status:204})}if(opt.method==='POST'){if(saved)return new Response('',{status:409});saved={...JSON.parse(opt.body),id:'fixture-id',saved_at:'2026-11-09T00:00:00Z'};return new Response(null,{status:201})}return Response.json(saved?[saved]:[])};
+ const worker=await import('../server/submissions/worker.mjs');const result=await run(env,worker.createHandler(upstream),upstream);assert.deepEqual(result,{workerSaved:true,retrySameReceipt:true,changedConflict:true,workerReadMatch:true,cleanupVerified:true});
+});

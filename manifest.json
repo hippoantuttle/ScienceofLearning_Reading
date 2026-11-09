@@ -1,11 +1,12 @@
 {
   "manifest_version": 3,
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAvg0PQDla+PpBmNEPloXivM6aX61E0XDtGLq8bpODSR+Wqjm99s2jw5tSpGkS+bBs7Vv4Xs4cB/Q4mEfFJ/pXQtQRdlxq8os63WwZUQO04fIZ1S7fsJEwtDRjhL6z2Np3xpMu96zw2Q7XgPuoNbPMHpuExPO8uoB4XibSjEcTIjWGK1MZxrC5KgV58Ir1RFc/tFRBaYeiMa0nm/gw2zL61oDQ+je+0RSmPoE4Cd90RK4rzlDi0veRZ8zNyJQ8zLfrOs59IF3fiy4zynIw5fLvRtvONaTEGAH2KL1YSbjdFrZLRVS6uBAUGOuUcyz1DIWPjO4miwpkOgeCUaggiJseBQIDAQAB",
   "name": "영자신문 독해 훈련",
   "version": "0.1.0",
   "minimum_chrome_version": "116",
   "description": "스스로 읽고 정리하는 영자신문 독해 훈련의 초기 화면입니다.",
   "permissions": ["sidePanel", "activeTab", "scripting"],
-  "host_permissions": ["http://127.0.0.1:8787/*"],
+  "host_permissions": ["http://127.0.0.1:8787/*", "https://mxhlxenfboiaywyhgyqs.supabase.co/*", "https://reading-submissions-pilot.patrick020308.workers.dev/*"],
   "background": { "service_worker": "background.js" },
   "action": { "default_title": "독해 훈련 사이드 패널 열기" },
   "side_panel": { "default_path": "sidepanel.html" }

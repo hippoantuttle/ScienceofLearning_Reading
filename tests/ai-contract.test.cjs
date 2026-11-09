@@ -54,6 +54,20 @@ test('요청 본문이 중단되면 서버가 timeout으로 연결을 종료한�
   assert.equal(result,'ECONNRESET');
  } finally {await new Promise(r=>server.close(r));}
 });
+test('잘못된 모의 응답과 JSON 파싱 실패는 거부한다',async()=>{
+ await assert.rejects(requestMock('test',{fetchImpl:async()=>({ok:true,json:async()=>({kind:'mock',recommendation:{...good,structureType:'invalid'}})})}),/형식/);
+ await assert.rejects(requestMock('test',{fetchImpl:async()=>({ok:true,json:async()=>{throw new SyntaxError('invalid JSON')}})}),SyntaxError);
+});
+test('명시 초기화 뒤 재요청을 허용하고 이전 세대의 늦은 성공과 실패는 폐기한다',async()=>{
+ for(const failure of [false,true]) {
+  const gate=createGate();let settle;
+  const old=gate.request(()=>new Promise((resolve,reject)=>{settle=failure?reject:resolve}));
+  gate.startReading();gate.reset();
+  const fresh=await gate.request(async()=>good);assert.deepEqual(fresh,good);
+  settle(failure?new Error('old'):good);assert.equal(await old,null);
+  await assert.rejects(gate.request(async()=>good),/한 번/);
+ }
+});
 test('읽기 시작 뒤 지연된 실패도 폐기한다',async()=>{
  const gate=createGate();let reject;const pending=gate.request(()=>new Promise((_,r)=>reject=r));
  gate.startReading();reject(new Error('late'));assert.equal(await pending,null);

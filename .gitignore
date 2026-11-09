@@ -77,3 +77,4 @@ temp/
 .wrangler/
 .dev.vars
 .dev.vars.*
+submission-config.local.js

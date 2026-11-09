@@ -20,7 +20,10 @@ try {
         exit 1
     }
     if ($response.StatusCode -ne 200) { Write-Host 'Unexpected HTTP status. Do not retry.'; exit 1 }
-    try { $data = $response.Content | ConvertFrom-Json } catch { Write-Host 'Invalid response. Do not retry.'; exit 1 }
+    try {
+        $utf8 = New-Object System.Text.UTF8Encoding($false, $true)
+        $data = $utf8.GetString($response.RawContentStream.ToArray()) | ConvertFrom-Json
+    } catch { Write-Host 'Invalid response. Do not retry.'; exit 1 }
     if ($data.kind -ne 'experiment' -or $null -eq $data.recommendation -or $null -eq $data.usage) { Write-Host 'Unexpected response. Do not retry.'; exit 1 }
     Write-Host 'PRIVATE RESULT (do not share screenshots or logs):'
     Write-Host ($data.recommendation | ConvertTo-Json -Depth 5)

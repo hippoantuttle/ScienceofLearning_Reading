@@ -1,5 +1,5 @@
 // Local development only: endpoint remains disabled until cost controls are verified.
-import { SYSTEM_PROMPT } from './prompts/pre-reading-v1.mjs';
+import { SYSTEM_PROMPT } from './prompts/pre-reading-v2.mjs';
 const validText = (x,n) => typeof x === 'string' && x.trim().length > 0 && x.length <= n && !/[<>]/.test(x);
 const keys = (x,k) => x && typeof x === 'object' && !Array.isArray(x) && Object.keys(x).sort().join('|') === [...k].sort().join('|');
 function validRecommendation(x) {

@@ -4,14 +4,15 @@ import { createRequire } from 'node:module';
 const require = createRequire(import.meta.url);
 const { validate } = require('../ai-client.js');
 import worker, { Budget, callProvider, createTestWorker, createExperimentWorker } from '../server/ai/worker.mjs';
-import { SYSTEM_PROMPT, PROMPT_VERSION } from '../server/ai/prompts/pre-reading-v1.mjs';
+import { SYSTEM_PROMPT, PROMPT_VERSION } from '../server/ai/prompts/pre-reading-v2.mjs';
 
 test('provider client sends only fixed synthetic example and validates JSON', async () => {
   let count = 0;
   const data = await callProvider('fake-key', async (url, options) => {
     count++; assert.equal(url,'https://api.deepseek.com/chat/completions');
     const body=JSON.parse(options.body); assert.equal(body.model,'deepseek-flash'); assert.equal(body.max_tokens,512);
-    assert.equal(PROMPT_VERSION,'pre-reading-v1'); assert.equal(body.messages[0].content,SYSTEM_PROMPT); assert.equal(body.messages[0].role,'system'); assert.equal(body.messages[1].role,'user');
+    assert.equal(PROMPT_VERSION,'pre-reading-v2'); assert.equal(body.messages[0].content,SYSTEM_PROMPT); assert.equal(body.messages[0].role,'system'); assert.equal(body.messages[1].role,'user');
+    assert.match(body.messages[0].content,/본문.*재진술/); assert.match(body.messages[0].content,/근거 없는 일반화/); assert.match(body.messages[0].content,/빈 배열/);
     return Response.json({choices:[{finish_reason:'stop',message:{content:JSON.stringify({terms:[],background:[],structureType:'unspecified'})}}]});
   });
   assert.equal(count,1); assert.equal(data.structureType,'unspecified');
@@ -54,10 +55,12 @@ test('server and panel contract agree on edge case fixtures', async () => {
   }
 });
 
-test('format validation alone cannot detect conclusion leakage', async () => {
-  const leaked={terms:[],background:['도서관은 주말에 문을 연다.'],structureType:'unspecified'};
-  const fake=async()=>Response.json({choices:[{finish_reason:'stop',message:{content:JSON.stringify(leaked)}}]});
-  assert.equal(validate(leaked),true); assert.deepEqual(await callProvider('fake',fake),leaked);
+test('format validation does not detect restatement or unsupported generalization', async () => {
+  for (const sentence of ['가상 도서관이 휴일에 문을 연다.', '이런 도서관은 언제나 주민이 운영한다.']) {
+    const leaked={terms:[],background:[sentence],structureType:'unspecified'};
+    const fake=async()=>Response.json({choices:[{finish_reason:'stop',message:{content:JSON.stringify(leaked)}}]});
+    assert.equal(validate(leaked),true); assert.deepEqual(await callProvider('fake',fake),leaked);
+  }
 });
 
 test('nonempty payloads are rejected before budget or provider access', async () => {

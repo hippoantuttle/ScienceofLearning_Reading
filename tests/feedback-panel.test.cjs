@@ -19,3 +19,24 @@ test('수정은 최초 제출을 바꾸지 않고 원본과 수정본을 비교�
  assert.match(t.e['feedback-comparison'].textContent,/최초: 최초/);assert.match(t.e['feedback-comparison'].textContent,/수정: 수정/);assert.equal(t.snapshot.mainIdea,'최초');
  t.context.resetFeedbackPanel();assert.equal(t.e['feedback-section'].hidden,true);assert.equal(t.e['feedback-comparison'].textContent,'');
 });
+
+test('수정본 실패·만료 시 입력을 유지하고 같은 계정 재로그인 후 이전 요청을 재확인한다',async()=>{
+ const t=setup(),client=require('../record-client.js');let pending,fail=true,expired=0;
+ const requestId='22222222-2222-4222-8222-222222222222';
+ const io={save:async(_record,p)=>{pending=p;if(fail)throw Object.assign(Error('상단에서 다시 로그인하세요.'),{status:401});return {status:'saved',revision:{id:'revision',requestId,savedAt:'2026-11-10T00:00:00Z'}};},readRevision:async()=>({status:'saved',revision:{id:'revision',requestId,savedAt:'2026-11-10T00:00:00Z',answers:pending.answers}})};
+ t.context.RecordClient={create:()=>io,createSaver:client.createSaver};t.context.crypto={randomUUID:()=>requestId};t.context.panelExpireAccount=()=>{expired++;};
+ t.context.feedbackSubmissionReady(t.snapshot,t.flow,{submissionId:requestId});
+ t.e['feedback-main'].value='저장할 수정';await t.e['revision-save'].click();
+ assert.equal(expired,1);assert.equal(t.e['feedback-main'].value,'저장할 수정');assert.match(t.e['revision-status'].textContent,/입력은 유지/);
+ t.e['feedback-main'].value='실패 후 추가 수정';fail=false;await t.e['revision-save'].click();
+ assert.equal(pending.answers.mainIdea,'저장할 수정');assert.equal(t.e['feedback-main'].value,'실패 후 추가 수정');assert.match(t.e['revision-status'].textContent,/이후 편집/);assert.equal(t.snapshot.mainIdea,'최초');
+});
+
+test('본문 추출 fallback은 AI 전송을 계속 막지만 저장 확인된 답안의 직접 수정은 제공한다',async()=>{
+ const t=setup();t.context.articleSession.fallback=true;
+ t.context.feedbackSubmissionReady(t.snapshot,t.flow);
+ assert.equal(t.e['feedback-section'].hidden,false);assert.equal(t.e['feedback-main'].value,'최초');
+ assert.equal(t.e['feedback-article'].value,'');assert.equal(t.e['feedback-request'].disabled,true);
+ t.e['feedback-consent'].checked=true;await t.e['feedback-request'].click();assert.equal(t.calls(),0);
+ t.e['feedback-request'].disabled=false;await t.e['feedback-request'].click();assert.equal(t.calls(),0);
+});

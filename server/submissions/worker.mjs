@@ -1,3 +1,5 @@
+import contract from '../../record-contract.js';
+import {handleRecords, original} from './records.mjs';
 const map={schemaVersion:'schema_version',sessionId:'session_id',structureType:'structure_type',mainIdea:'main_idea',primary:'primary_text',support:'support_text',relation:'relation_text',retell:'retell',reflection:'reflection',newWords:'new_words',interests:'interests',rechecked:'rechecked'};
 const textFields=['mainIdea','primary','support','relation','retell','reflection','newWords','interests'];
 const required=['mainIdea','primary','support','relation','retell'];
@@ -21,24 +23,34 @@ export function createHandler(fetchImpl=fetch){return async(req,env)=>{
   const member=await fetchImpl(base+'/rest/v1/rpc/is_active_pilot_member',{method:'POST',headers:{...upstreamHeaders,'Content-Type':'application/json'},body:'{}',redirect:'manual'});
   if(!member.ok)return reply(503,{error:'membership_unavailable'});if(await member.json()!==true)return reply(403,{error:'inactive'});
   if(req.method==='GET'){const query=new URL(req.url).searchParams;if(query.size===1&&query.get('membership')==='1')return reply(200,{active:true});}
+  const recordResponse=await handleRecords(req,{base,upstreamHeaders,user,fetchImpl,reply});if(recordResponse)return recordResponse;
+  if(new URL(req.url).pathname!=='/submissions')return reply(404,{error:'not_found'});
   let payload,session;
   if(req.method==='POST'){
    const raw=await req.text();if(new TextEncoder().encode(raw).length>256000)return reply(413,{error:'too_large'});
    try{payload=JSON.parse(raw);}catch{return reply(400,{error:'invalid'});}
-   if(!valid(payload)||req.headers.get('idempotency-key')!==payload.sessionId)return reply(400,{error:'invalid'});session=payload.sessionId;
+   const {articleTitle,sourceUrl,...legacy}=payload||{};
+   if(articleTitle!==undefined || sourceUrl!==undefined){try{contract.article(articleTitle,sourceUrl);}catch{return reply(400,{error:'invalid'});}}
+   if(!valid(legacy)||req.headers.get('idempotency-key')!==legacy.sessionId)return reply(400,{error:'invalid'});session=legacy.sessionId;
   }else{const url=new URL(req.url);session=url.searchParams.get('sessionId');if(!uuid.test(session||'')||[...url.searchParams.keys()].some(k=>k!=='sessionId'))return reply(400,{error:'invalid'});}
   const params=new URLSearchParams({owner_id:'eq.'+user.id,session_id:'eq.'+session,select:'*',limit:'1'});const db=base+'/rest/v1/pilot_submissions';
   const read=async()=>{const r=await fetchImpl(db+'?'+params,{method:'GET',headers:upstreamHeaders,redirect:'manual'});if(!r.ok)throw Error('db');const rows=await r.json();if(!Array.isArray(rows))throw Error('db');return rows[0]||null;};
   if(req.method==='POST'){
    const row=Object.fromEntries(Object.entries(map).map(([key,column])=>[column,payload[key]]));row.owner_id=user.id;
+   if(payload.articleTitle!==undefined){row.article_title=payload.articleTitle;row.source_url=payload.sourceUrl;}
    const r=await fetchImpl(db,{method:'POST',headers:{...upstreamHeaders,'Content-Type':'application/json',Prefer:'return=minimal'},body:JSON.stringify(row),redirect:'manual'});
    if(!r.ok&&r.status!==409)return reply(r.status===401||r.status===403?403:503,{error:'save_failed'});
    const saved=await read();if(!saved)return reply(503,{error:'not_verified'});
-   if(saved.owner_id!==user.id||Object.entries(row).some(([key,value])=>saved[key]!==value))return reply(409,{error:'conflict'});
+   if(saved.owner_id!==user.id||Object.entries(row).some(([key,value])=>saved[key]!==value)||(payload.articleTitle===undefined&&saved.article_title!=null))return reply(409,{error:'conflict'});
    return reply(200,{status:'saved',submissionId:saved.id,savedAt:saved.saved_at});
   }
   const saved=await read();if(!saved||saved.owner_id!==user.id)return reply(404,{error:'not_found'});
-  return reply(200,{status:'saved',submissionId:saved.id,savedAt:saved.saved_at,payload:Object.fromEntries(Object.entries(map).map(([key,column])=>[key,saved[column]]))});
- }catch{return reply(503,{error:'unavailable'});}
+  return reply(200,original(saved));
+ }catch(error){
+  if(error?.code==='records_schema_missing')return reply(503,{error:'records_schema_missing'});
+  if(error?.status===401)return reply(401,{error:'unauthorized'});
+  if(error?.status===403)return reply(403,{error:'forbidden'});
+  return reply(503,{error:'unavailable'});
+ }
 };}
 export default {fetch:createHandler()};

@@ -82,3 +82,9 @@ pre { white-space: pre-wrap; }
 details.dev-only { margin-top: var(--space-4); border: 1px dashed var(--border); border-radius: var(--radius); padding: var(--space-2) var(--space-3); }
 details.dev-only[hidden] { display: none; }
 details.dev-only summary { cursor: pointer; color: var(--muted); font-weight: 600; }
+/* 저장본은 좁은 패널에서도 항목별로 이어서 읽는다. */
+.records-list { padding-left: 1.4rem; }
+.records-list li { margin-block: 0.6rem; }
+.records-list button { width: 100%; text-align: left; overflow-wrap: anywhere; }
+#records-section dd, #records-section p, #feedback-comparison { white-space: pre-wrap; overflow-wrap: anywhere; }
+#records-section select { width: 100%; min-width: 0; }

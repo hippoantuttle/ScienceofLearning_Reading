@@ -8,7 +8,7 @@ const SubmissionFlow=(()=>{
   async function submit(input){if(!token)throw Error('로그인이 필요합니다.');if(pending)throw Error('기존 제출을 재시도하세요.');pending=contract.buildPayload(input,newId());return send();}
   // 새 시도(새 flow)에서 같은 패널 로그인을 이어 쓴다. 회원 확인은 최초 signIn에서 이미 통과한 토큰만 넘겨받는다.
   function adopt(value,name){if(pending)throw Error('기존 제출이 있는 시도에는 로그인을 옮길 수 없습니다.');if(typeof value!=='string'||!value.trim()||typeof name!=='string'||!name)throw Error('로그인 정보가 올바르지 않습니다.');token=value;identity=name;}
-  return {signIn,adopt,submit,retry:send,hasPending:()=>!!pending,getToken:()=>token,getIdentity:()=>token?identity:null,verifiedSnapshot:()=>completed?structuredClone(pending):null};
+  return {signIn,adopt,expire:()=>{token=null;},submit,retry:send,hasPending:()=>!!pending,getToken:()=>token,getIdentity:()=>token?identity:null,verifiedSnapshot:()=>completed?structuredClone(pending):null};
  }
  return {createFlow};
 })();

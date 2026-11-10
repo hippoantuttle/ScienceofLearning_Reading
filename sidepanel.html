@@ -11,6 +11,8 @@
   <script src="local-preview-ui.js" defer></script>
   <script src="submission-client.js" defer></script>
   <script src="submission-demo.js" defer></script>
+  <script src="record-contract.js" defer></script>
+  <script src="record-client.js" defer></script>
   <script src="submission-contract.js" defer></script>
   <script src="submission-http.js" defer></script>
   <script src="submission-auth.js" defer></script>
@@ -21,12 +23,14 @@
   <script src="submission-panel.js" defer></script>
   <script src="pilot-ai-panel.js" defer></script>
   <script src="feedback-panel.js" defer></script>
+  <script src="records-panel.js" defer></script>
   <script src="account-bar.js" defer></script>
   <script src="panel-shell.js" defer></script>
 </head>
 <body><main>
   <header class="panel-header">
     <h1>한국어 독해 훈련</h1>
+    <button id="records-open" type="button" class="quiet">내 기록</button>
     <section id="account-bar" class="account-bar" aria-label="계정">
       <div id="account-signed-in" hidden>
         <span id="account-identity"></span>
@@ -41,7 +45,7 @@
       <p id="account-status" role="status" aria-live="polite"></p>
     </section>
   </header>
-  <nav aria-label="훈련 단계"><ol id="stepper" class="stepper">
+  <div id="training-context"><nav aria-label="훈련 단계"><ol id="stepper" class="stepper">
     <li data-step="preparation">읽기 준비</li>
     <li data-step="reading">읽기·구조화</li>
     <li data-step="retell-view">다시 말하기</li>
@@ -49,7 +53,7 @@
     <li data-step="feedback-section">피드백·수정</li>
   </ol></nav>
   <p role="note" class="callout">패널을 닫거나 새로고침하면 작성 내용이 사라집니다. 제출 확인 전에는 패널을 열어 두세요.</p>
-  <div id="status" role="status" aria-live="polite">읽을 글이 열린 탭에서 아래 「현재 글 연결」을 누르세요.</div>
+  <div id="status" role="status" aria-live="polite">읽을 글이 열린 탭에서 아래 「현재 글 연결」을 누르세요.</div></div>
 
   <section id="preparation" aria-labelledby="step1">
     <h2 id="step1">읽기 준비</h2>
@@ -144,7 +148,13 @@
     <button id="finish" type="button">로컬 작성 완료</button><p id="finish-status" role="status"></p>
     <section aria-labelledby="submission-heading">
       <h3 id="submission-heading">서버 제출</h3>
-      <p>제출 시 중심 생각, 구조도, Retell, 선택 정리와 원문 재확인 여부가 저장됩니다. 기사 전문·제목·주소는 포함하지 않습니다. 제출하려면 상단에서 로그인하세요.</p>
+      <p>제출 시 중심 생각, 구조도, Retell, 선택 정리와 원문 재확인 여부가 저장됩니다. 기사 전문은 저장하지 않습니다. 제출하려면 상단에서 로그인하세요.</p>
+      <details><summary>글 식별 정보 (선택)</summary>
+        <p>민감한 정보가 없는 공개 글 제목과 출처 사이트 주소만 직접 입력하세요. 주소에는 경로·검색어·로그인 정보를 넣지 마세요. 선택하지 않으면 글 정보 없이 저장합니다.</p>
+        <label for="submission-article-title">공개 글 제목 (200자 이내)</label><input id="submission-article-title" type="text" maxlength="200" autocomplete="off">
+        <label for="submission-source-url">출처 사이트 주소 (예: https://example.com)</label><input id="submission-source-url" type="url" autocomplete="off">
+        <label class="check"><input id="submission-article-consent" type="checkbox"> 입력한 제목과 출처 사이트 주소도 저장하는 데 동의합니다.</label>
+      </details>
       <label class="check"><input id="submission-consent" type="checkbox"> 위 항목을 제출하고 저장하는 데 동의합니다.</label>
       <button id="submission-send" type="button" class="primary">제출 및 저장 확인</button>
       <p id="submission-status" role="status" aria-live="polite"></p>
@@ -164,12 +174,28 @@
     <label class="check"><input id="feedback-consent" type="checkbox"> 글과 제출한 답안을 AI 제공자에 전송하는 데 동의합니다.</label>
     <button id="feedback-request" type="button" class="primary" disabled>제출 후 AI 피드백 요청</button>
     <p id="feedback-status" role="status" aria-live="polite"></p><div id="feedback-result" class="result" aria-live="polite"></div>
-    <h3>직접 수정</h3><p>수정 내용과 비교는 현재 패널에서만 유지되며 서버에 저장되지 않습니다.</p>
+    <h3>직접 수정</h3><p>최초 제출을 유지하며 아래 다섯 항목만 별도 수정 이력으로 저장합니다. 저장하지 않은 수정은 패널을 닫으면 사라집니다. AI 피드백은 저장하지 않습니다.</p>
     <label for="feedback-main">중심 생각</label><textarea id="feedback-main" rows="3"></textarea>
     <label for="feedback-primary">핵심 정보</label><textarea id="feedback-primary" rows="3"></textarea>
     <label for="feedback-support">보조 정보</label><textarea id="feedback-support" rows="3"></textarea>
     <label for="feedback-relation">관계 설명</label><textarea id="feedback-relation" rows="3"></textarea>
     <label for="feedback-retell">Retell</label><textarea id="feedback-retell" rows="3"></textarea>
     <button id="feedback-compare" type="button">최초본과 수정본 비교</button><pre id="feedback-comparison"></pre>
+    <button id="revision-save" type="button" class="primary" disabled>수정본 저장 / 실패한 요청 재시도</button>
+    <p id="revision-status" role="status" aria-live="polite"></p>
+  </section>
+  <section id="records-section" hidden aria-labelledby="records-heading">
+    <h2 id="records-heading" tabindex="-1">내 기록</h2>
+    <p>본인이 저장한 최초본과 수정본입니다. 이 화면에서는 AI를 요청하지 않습니다. 새 독해의 입력으로 사용하지 않습니다.</p>
+    <button id="records-close" type="button">새 독해 준비로 돌아가기</button>
+    <button id="records-refresh" type="button">최근 기록 다시 조회</button>
+    <p id="records-status" role="status" aria-live="polite"></p>
+    <ol id="records-list" class="records-list"></ol>
+    <button id="records-more" type="button" hidden>이전 기록 더 보기</button>
+    <section id="records-detail" hidden aria-label="저장본 확인">
+      <label for="records-versions">확인할 저장본</label><select id="records-versions"></select>
+      <button id="records-revisions-more" type="button" hidden>이전 수정본 더 보기</button>
+      <div id="records-content"></div>
+    </section>
   </section>
 </main></body></html>

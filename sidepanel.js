@@ -20,7 +20,13 @@ function showStatus(message, isError = false) {
 }
 
 analyzeButton.addEventListener('click', async () => {
+  if (operationBusy || analyzeButton.disabled) return;
   if (articleSession && !confirm('현재 훈련 종료 후 작성 내용을 삭제하고 새 읽기 전 준비를 시작합니다. 같은 글을 다시 연결해도 새 시도이며 이전 시도의 연속 수행이나 순수 인출 성공으로 취급하지 않습니다. 계속할까요?')) return;
+  analyzeButton.disabled=true;
+  if (articleSession && !await restoreBlind()) {analyzeButton.disabled=false;return;}
+  if (typeof resetRecordsPanel === 'function') resetRecordsPanel();
+  const recordsSection=document.getElementById('records-section');if(recordsSection)recordsSection.hidden=true;
+  const trainingContext=document.getElementById('training-context');if(trainingContext)trainingContext.hidden=false;
   recommendationGate.reset();
   if (typeof resetPanelSubmission === 'function') resetPanelSubmission();
   if (typeof resetPilotAi === 'function') resetPilotAi();
@@ -31,6 +37,8 @@ analyzeButton.addEventListener('click', async () => {
   document.getElementById('mock-token').value = '';
   document.getElementById('mock-recommend').disabled = true;
   if (articleSession) document.getElementById('prior').value = '';
+  const articleConsent=document.getElementById('submission-article-consent');if(articleConsent)articleConsent.checked=false;
+  for(const id of ['submission-article-title','submission-source-url']){const el=document.getElementById(id);if(el)el.value='';}
   document.getElementById('worksheet').reset();
   document.getElementById('form-error').textContent = '';
   document.getElementById('reading').hidden = true;
@@ -112,6 +120,7 @@ document.getElementById('back').addEventListener('click', () => {
   document.getElementById('start-reading').focus();
 });
 document.getElementById('start-reading').addEventListener('click', async () => {
+  if(operationBusy)return;operationBusy=true;
   try {
     if (!articleSession) throw new Error('먼저 글을 연결하세요.');
     const current = await chrome.tabs.get(articleSession.tabId);
@@ -129,6 +138,7 @@ document.getElementById('start-reading').addEventListener('click', async () => {
     document.getElementById('reading').hidden = false;
     document.getElementById('main-idea').focus();
   } catch (error) { showStatus(error.message || '연결한 글을 다시 확인하세요.', true); }
+  finally{operationBusy=false;}
 });
 document.getElementById('worksheet').addEventListener('submit', (event) => {
   event.preventDefault();
@@ -191,19 +201,23 @@ document.getElementById('to-retell').addEventListener('click',async () => {
   finally { operationBusy = false; }
 });
 document.getElementById('back-to-reading').addEventListener('click',async () => {
-  if (!await restoreBlind()) return;
+  if(operationBusy)return;operationBusy=true;
+  try{if (!await restoreBlind()) return;}finally{operationBusy=false;}
   rechecked = true; document.getElementById('retell-view').hidden = true; document.getElementById('reading').hidden = false;
 });
 document.getElementById('to-review').addEventListener('click',async () => {
+  if(operationBusy)return;
   const retell = document.getElementById('retell-input').value;
   if (!retell.trim()) { showStatus('다시 말하기를 작성하세요.',true); document.getElementById('retell-input').focus(); return; }
-  if (!await restoreBlind()) return;
+  operationBusy=true;
+  try{if (!await restoreBlind()) return;}finally{operationBusy=false;}
   const values = valuesForWorksheet();
   for (const [id,value] of Object.entries({'summary-main':values.main,'summary-primary':values.primary,'summary-support':values.support,'summary-relation':values.relation,'summary-retell':retell,'summary-type':document.getElementById('structure').selectedOptions[0].textContent})) document.getElementById(id).textContent = value;
   document.getElementById('retell-view').hidden = true; document.getElementById('review-view').hidden = false; document.getElementById('finish').focus();
 });
 document.getElementById('end-training').addEventListener('click',async () => {
-  if (!await restoreBlind()) return;
+  if(operationBusy)return;operationBusy=true;
+  try{if (!await restoreBlind()) return;}finally{operationBusy=false;}
   document.getElementById('retell-view').hidden = true; document.getElementById('reading').hidden = false; rechecked = true;
   showStatus('훈련이 종료되었습니다. 입력 내용은 패널을 닫으면 사라집니다.');
 });

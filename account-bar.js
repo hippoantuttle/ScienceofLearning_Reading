@@ -23,6 +23,7 @@ accountEl('account-form').addEventListener('submit', async (event) => {
     await panelFlow().signIn(accountEl('ai-email').value, password.value);
     status.textContent = '';
     accountRender();
+    if(typeof recordsVisible==='function'&&recordsVisible()){resetRecordsPanel();await recordsLoad();}
   } catch (error) { status.textContent = error?.message || '로그인하지 못했습니다.'; }
   finally { password.value = ''; button.disabled = false; }
 });

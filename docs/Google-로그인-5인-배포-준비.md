@@ -34,7 +34,7 @@
 - Google provider를 위 값으로 구성하고 활성화한다. 신규 Google 사용자의 내부 Auth 계정 생성 허용 여부를 확인한다. 공개 Auth 사용자 레코드가 생기는 것과 앱의 실제 접근 허용은 다르다. 원하지 않는 가입 자체 차단이 필요하면 별도 Auth hook을 검토하며 이번 코드에 구현됐다고 가정하지 않는다.
 - Supabase Auth의 허용 redirect URL은 `https://jenapgoakhnmlmjcdnkfakkkgjobbfbb.chromiumapp.org/google-callback?flow=*`처럼 고정 확장 ID·고정 경로와 세션용 flow 쿼리를 허용하는 좁은 규칙으로 설정한다. 실제 해당 플랫폼의 glob 매칭을 테스트 계정으로 확인한다. 허용하지 않아 Site URL로 되돌아가는 경우 앱은 잘못된 복귀로 거절한다. 임의의 외부 도메인 와일드카드는 쓰지 않는다.
 - 코드도 callback origin/path/일회성 flow/PKCE와 확인된 Supabase 사용자 ID를 검사한다. 인증 URL에 토큰·이메일·답안을 넣지 않는다. Google/Supabase 콜백과 검증값을 로그로 남기지 않는다. [Chrome identity](https://developer.chrome.com/docs/extensions/reference/api/identity), [Supabase PKCE](https://supabase.com/docs/guides/auth/sessions/pkce-flow), [redirect 설정](https://supabase.com/docs/guides/auth/redirect-urls)
-- DB 초안은 `server/sql-drafts/task020-google-access.sql`이다. **현재 로컬 PostgreSQL 검증용이고 원격에 적용하지 않았다.** 실제 테이블/기존 함수/정책·grants·노출 schema·advisors를 재확인하고 정식 migration을 생성·검토한 뒤 승인된 변경만 적용한다. 충돌 시 초기화를 하지 않는다.
+- DB 초안은 `server/migrations/20261110140000_google_cohort_access.sql`이다. **현재 로컬 PostgreSQL 검증용이고 원격에 적용하지 않았다.** 실제 테이블/기존 함수/정책·grants·노출 schema·advisors를 재확인하고 정식 migration을 생성·검토한 뒤 승인된 변경만 적용한다. 충돌 시 초기화를 하지 않는다.
 - `pilot_private.cohorts`와 `pilot_private.google_invites`는 Data API 노출 schema에 추가하지 않는다. 두 테이블은 RLS·직접 권한 회수로 보호한다. public에는 인자 없는 자기 승인 RPC와 자기 자격 확인 invoker 함수만 제공한다. 새 public 함수의 API 노출/캐시를 확인한다.
 - 기간 만료는 새 최초본/수정본 쓰기·AI를 차단한다. 기존 승인 사용자에게는 본인 기록 조회를 유지한다. 명단 또는 회원 자체를 비활성화하면 기존 기록 접근도 차단된다. 기존 legacy 본인 계정 접근은 유지하지만 5인 회차 제한 Worker에서 새 학습/AI를 하려면 해당 회차 자격이 필요하다.
 

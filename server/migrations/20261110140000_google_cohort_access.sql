@@ -1,6 +1,14 @@
--- TASK-020 local review draft, not applied remotely. Inspect actual schema,
--- grants/advisors and generate a formal CLI migration before approved deployment.
+-- TASK-020 Google cohort access. Apply once in Supabase SQL Editor (transactional).
+-- Preflight aborts without changes if the live schema differs from what this expects.
 begin;
+do $pre$ begin
+  if to_regclass('public.pilot_members') is null or to_regclass('public.pilot_submissions') is null or to_regclass('public.pilot_revisions') is null
+     or to_regprocedure('public.is_active_pilot_member()') is null then raise exception 'preflight: base pilot objects missing'; end if;
+  if to_regnamespace('pilot_private') is not null or to_regprocedure('public.claim_google_pilot_access()') is not null then raise exception 'preflight: TASK-020 objects already exist'; end if;
+  if exists(select 1 from information_schema.columns where table_schema='public' and table_name='pilot_members' and column_name='auth_mode') then raise exception 'preflight: auth_mode already exists'; end if;
+  if (select count(*) from pg_policies where schemaname='public' and ((tablename='pilot_submissions' and policyname='pilot_own_insert') or (tablename='pilot_revisions' and policyname='pilot_revision_own_insert')))<>2 then raise exception 'preflight: expected insert policies missing'; end if;
+  if not exists(select 1 from pg_constraint where conrelid='public.pilot_members'::regclass and contype in ('p','u') and conkey=array[(select attnum from pg_attribute where attrelid='public.pilot_members'::regclass and attname='user_id')]::int2[]) then raise exception 'preflight: pilot_members.user_id unique key missing'; end if;
+end $pre$;
 create schema pilot_private;
 revoke all on schema pilot_private from public, anon, authenticated;
 alter table public.pilot_members add column auth_mode text not null default 'legacy'

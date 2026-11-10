@@ -13,7 +13,7 @@ async function fixture(capacity=5){
  create table auth.users(id uuid primary key,email text,email_confirmed_at timestamptz,raw_user_meta_data jsonb default '{}');
  create table auth.identities(user_id uuid references auth.users(id),provider text,identity_data jsonb);
  create function auth.uid() returns uuid language sql stable as $$select nullif(current_setting('request.jwt.claim.sub',true),'')::uuid$$;`);
- for(const name of ['../server/migrations/001-pilot-draft.sql','../server/migrations/20261110045614_revision_storage.sql','../server/sql-drafts/task020-google-access.sql'])await db.exec(readFileSync(new URL(name,import.meta.url),'utf8'));
+ for(const name of ['../server/migrations/001-pilot-draft.sql','../server/migrations/20261110045614_revision_storage.sql','../server/migrations/20261110140000_google_cohort_access.sql'])await db.exec(readFileSync(new URL(name,import.meta.url),'utf8'));
  await db.query("insert into pilot_private.cohorts values ('team-test',$1,now()-interval '1 hour',now()+interval '1 day',true)",[capacity]);
  for(let n=1;n<=18;n++){
   await db.query("insert into auth.users(id,email,email_confirmed_at) values($1,$2,now())",[uid(n),email(n)]);

@@ -231,6 +231,18 @@ test('하루가 바뀌면 사용량이 초기화된다', async () => {
   } finally { globalThis.Date = RealDate; }
 });
 
+test('명시적 무제한 모드는 예산 예약 없이 호출하고 한쪽만 무제한이면 설정 오류다', async () => {
+  const t = setup({ envOverride: { PILOT_USER_DAILY_LIMIT: 'unlimited', PILOT_GLOBAL_DAILY_LIMIT: 'unlimited' } });
+  t.env.PILOT_BUDGET = { idFromName() { throw new Error('budget must not be used'); } };
+  for (let i = 0; i < 8; i++) assert.equal((await t.call('tokA')).status, 200);
+  assert.equal(t.counter.n, 8);
+  assert.deepEqual(limitsFrom({ PILOT_USER_DAILY_LIMIT: 'unlimited', PILOT_GLOBAL_DAILY_LIMIT: 'unlimited' }), { unlimited: true });
+  assert.equal(limitsFrom({ PILOT_USER_DAILY_LIMIT: 'unlimited' }), null);
+  assert.equal(limitsFrom({ PILOT_USER_DAILY_LIMIT: '5', PILOT_GLOBAL_DAILY_LIMIT: 'unlimited' }), null);
+  const half = setup({ envOverride: { PILOT_USER_DAILY_LIMIT: 'unlimited' } });
+  assert.equal((await half.call('tokA')).status, 503); assert.equal(half.counter.n, 0);
+});
+
 test('한도 설정 파싱: 기본값, 잘못된 값', () => {
   assert.deepEqual(limitsFrom({}), { user: 5, global: 100 });
   assert.equal(limitsFrom({ PILOT_USER_DAILY_LIMIT: 'abc' }), null);

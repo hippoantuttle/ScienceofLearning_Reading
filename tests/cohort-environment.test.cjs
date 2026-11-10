@@ -20,5 +20,14 @@ test('회차 준비는 명단/비밀 없는 5/14 후보만 만들고 기본 AI �
    assert.throws(()=>prepare(args));
   }finally{assert.equal(path.dirname(path.resolve(destination)),path.resolve(__dirname,'../build'));fs.rmSync(destination,{recursive:true,force:true});}
  }
- for(const invalid of [{capacity:6},{cohortId:'../escape'},{expiresAt:new Date(now-1).toISOString()},{expiresAt:new Date(now+8*86400000).toISOString()},{config:{...config,clientSecret:'synthetic'}}])assert.throws(()=>prepare({config,label:'test-invalid',cohortId:'team-test',now,expiresAt,...invalid}));
+ for(const invalid of [{capacity:6},{cohortId:'../escape'},{expiresAt:new Date(now-1).toISOString()},{expiresAt:new Date(now+32*86400000).toISOString()},{config:{...config,clientSecret:'synthetic'}}])assert.throws(()=>prepare({config,label:'test-invalid',cohortId:'team-test',now,expiresAt,...invalid}));
+});
+test('회차 준비는 31일 이내 기한과 명시적 무제한 한도를 지원한다',()=>{
+ const now=Date.now(),expiresAt=new Date(now+15*86400000).toISOString();
+ const {destination,report}=prepare({config,label:'test-cohort-'+crypto.randomUUID(),cohortId:'team-test',capacity:5,now,expiresAt,unlimited:true});
+ try{
+  const active=JSON.parse(fs.readFileSync(path.join(destination,'wrangler.ai.review.json'),'utf8'));
+  assert.equal(active.vars.PILOT_USER_DAILY_LIMIT,'unlimited');assert.equal(active.vars.PILOT_GLOBAL_DAILY_LIMIT,'unlimited');
+  assert.equal(active.vars.PILOT_COHORT_EXPIRES_AT,expiresAt);assert.equal(report.dailyUserLimit,'unlimited');
+ }finally{fs.rmSync(destination,{recursive:true,force:true});}
 });

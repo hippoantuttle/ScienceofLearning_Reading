@@ -11,7 +11,7 @@
 - google-auth.js — 사용자 버튼 기반 Chrome identity/Supabase provider PKCE. 고정 callback·랜덤 flow·5분 시도·서버 확인 사용자·Google 검증 이메일, 오류/취소·중복/늦은 결과 차단. 토큰/검증값 지속 저장 없음.
 - account-bar.js, sidepanel.html, submission-flow.js, submission-panel.js — Google 로그인 표시·자동 승인 RPC·UID/이메일/로그인 방식 결속·만료 후 같은 계정 재시도·새 시도 로그인 유지. 로그인/기록/AI의 기존 세션을 재사용.
 - manifest.json, scripts/build-extension.cjs, scripts/extension-config.public.json — 선택적 googleLoginEnabled, 실제 Google 설치본만 identity 권한, Google 서버 fetch/Gmail 권한 없이 기존 Auth 호스트와 콜백 사용. 기본·이전 설정·검토 전용 빌드 호환 유지. 런타임24개.
-- server/sql-drafts/task020-google-access.sql — 비공개 회차/이메일 명단, provider-controlled Google identity 확인·정원 잠금·disabled 회원 보호, 사전 등록 자동 연결, RLS·회수·기한 후 조회/쓰기 분리. public RPC는 invoker wrapper, 권한 있는 내부 함수는 비노출 schema에 위치. 정식 migration/원격 적용 전 초안.
+- server/migrations/20261110140000_google_cohort_access.sql — 비공개 회차/이메일 명단, provider-controlled Google identity 확인·정원 잠금·disabled 회원 보호, 사전 등록 자동 연결, RLS·회수·기한 후 조회/쓰기 분리. public RPC는 invoker wrapper, 권한 있는 내부 함수는 비노출 schema에 위치. 정식 migration/원격 적용 전 초안.
 - server/pilot-access.mjs, server/ai/pilot-worker.mjs, server/submissions/worker.mjs — 선택적 회차/기한·현재 자격 확인, 잘못된 설정 실패 거절. 회차별 AI 예산 분리. 기존 본인 모드 보존. 기간 종료 후 새 AI/POST 거절·본인 GET 경로 유지.
 - ai-client.js — 회차 종료/미승인/승인 서비스 장애의 안전한 안내 문구.
 - scripts/prepare-cohort-environment.cjs, scripts/prepare-pilot-environment.cjs — 명단·Secret 없는 분리 검토 후보, 서버 import 의존 소스·해시 보존, 기존 본인 준비 도구 호환. 자동 배포/기한 변경 없음.
@@ -62,3 +62,13 @@
 - 사용자 요청 및 handoff 스킬에 따라 세션 인계는 OS 임시 폴더에 작성한다. 기존 요청/결과·설정 안내·QA·코드/검증 내용은 인계에 중복하지 않고 경로로 참조한다.
 - Google provider=false 확인·실환경 설정/DB/명단/배포·사람 QA 대기, 기존 본인 시험 기한과 검토 후보의 차이를 유지한다. 후보 산출물을 이번 커밋 기반 릴리스로 소급 표시하지 않는다.
 - 구현 후 전체 자동217 통과 근거와 후속 테스트 정리 보호 검사1개 통과를 유지한다. 이번 인계/권한 기록은 문서 변경이며 런타임 변경 없음.
+
+## 실환경 적용·본인 확인 (2026-11-10 후속)
+
+- Google provider 활성(google=true) 확인. 사용자가 SQL Editor로 `server/migrations/20261110140000_google_cohort_access.sql`(사전점검 포함)·회차 team5-20261110(정원5, 2026-11-25T14:59:59Z)·초대5를 적용하고 읽기 전용 확인 결과를 보고. pilot_private API 비노출(PGRST106)·anon RPC 401 확인.
+
+- 배포: 제출 Worker b3233c5d(회차 모드), AI Worker 90c15001(회차 모드·사용자/전체 무제한). 비호출 원격 점검 통과. 설치본 `dist/task020-google-team5-ai-01`(Google·AI UI on), ZIP SHA-256 `fa0fdfb2257247870160eb9c1e1d2ec05c5443464d4319fe38f8d585713c20eb`.
+
+- 사용자 보고: 본인 Google 로그인·제출 성공, 이어서 AI 추천·피드백 성공. 미등록 계정 거절과 팀원 4명 QA는 아직 미보고(미검증).
+
+- 자동 검사 219 통과. 비용 상한은 DeepSeek 잔액에만 의존.

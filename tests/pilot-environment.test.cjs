@@ -13,7 +13,9 @@ test('본인 배포 후보는 단일 계정·기한·5/5 한도를 요구하고 
   assert.equal(c.active.vars.PILOT_SELFTEST_EXPIRES_AT,expiresAt);
   assert.equal(c.active.vars.PILOT_SELFTEST_USER_ID,undefined);assert.equal(c.active.vars.DEEPSEEK_API_KEY,undefined);
   assert.equal(c.extensionActive.articleTestEnabled,true);assert.equal(c.extensionDisabled.articleTestEnabled,false);
-  for(const expiresAt of ['invalid',new Date(now-1).toISOString(),new Date(now+25*60*60*1000).toISOString()])assert.throws(()=>candidates(config,{expiresAt,now}));
+  for(const expiresAt of ['invalid',new Date(now-1).toISOString(),new Date(now+32*24*60*60*1000).toISOString()])assert.throws(()=>candidates(config,{expiresAt,now}));
+  const long=new Date(now+15*24*60*60*1000).toISOString(),u=candidates(config,{expiresAt:long,unlimited:true,now});
+  assert.equal(u.active.vars.PILOT_SELFTEST_EXPIRES_AT,long);assert.equal(u.active.vars.PILOT_USER_DAILY_LIMIT,'unlimited');assert.equal(u.active.vars.PILOT_GLOBAL_DAILY_LIMIT,'unlimited');
   assert.throws(()=>candidates({...config,aiEndpoint:'https://other.example.org/recommend'},{expiresAt,now}));
   assert.deepEqual(secretReadiness([]),['DEEPSEEK_API_KEY','SUPABASE_PUBLISHABLE_KEY','PILOT_SELFTEST_USER_ID']);
   assert.deepEqual(secretReadiness(['DEEPSEEK_API_KEY','SUPABASE_ANON_KEY','PILOT_SELFTEST_USER_ID']),[]);

@@ -18,7 +18,10 @@ function positiveInt(raw, fallback) {
   return Number.isSafeInteger(n) && n > 0 ? n : null;
 }
 
+// 'unlimited'는 사용자·전체 두 값이 모두 명시적으로 같을 때만 허용한다(한쪽만이면 설정 오류).
 export function limitsFrom(env) {
+  const u = env.PILOT_USER_DAILY_LIMIT, g = env.PILOT_GLOBAL_DAILY_LIMIT;
+  if (u === 'unlimited' || g === 'unlimited') return u === g ? { unlimited: true } : null;
   const user = positiveInt(env.PILOT_USER_DAILY_LIMIT, DEFAULT_USER_DAILY_LIMIT);
   const global = positiveInt(env.PILOT_GLOBAL_DAILY_LIMIT, DEFAULT_GLOBAL_DAILY_LIMIT);
   return user && global ? { user, global } : null;
@@ -72,6 +75,7 @@ export class PilotBudget {
     if (!userId || !/^[0-9a-f-]{36}$/i.test(userId)) return new Response(null, { status: 400 });
     const limits = limitsFrom(this.env);
     if (!limits) return new Response(null, { status: 503 });
+    if (limits.unlimited) return new Response(null, { status: 200 });
     const today = new Date().toISOString().slice(0, 10);
     const accepted = await this.state.storage.transaction(async (txn) => {
       let usage = await txn.get('usage');
@@ -166,7 +170,7 @@ export function createPilotWorker({ fetchImpl = fetch, providerFetch = fetch } =
 
       if (selfTest.enabled && Date.now() >= selfTest.deadline) return reply(503, {error:'selftest_expired'});
       if(cohort.enabled&&Date.now()>=cohort.deadline)return reply(403,{error:'cohort_expired'});
-      try {
+      if (!limitsFrom(env).unlimited) try {
         const stub = env.PILOT_BUDGET.get(env.PILOT_BUDGET.idFromName(cohort.enabled?'cohort:'+cohort.id:'pilot'));
         const reservation = await stub.fetch(new Request('https://budget.internal/', { method: 'POST', headers: { 'X-User-Id': userId } }));
         if (reservation.status === 429) return reply(429, { error: 'limit' });

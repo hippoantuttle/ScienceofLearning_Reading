@@ -65,3 +65,19 @@ test('수정본 별도 재조회가 다르면 완료하지 않고 같은 식별�
   await assert.rejects(saver.save(answers),/일치하지/);assert.equal(saver.hasPending(),true);mismatch=false;
   await saver.save({...answers,mainIdea:'실패 후 편집'});assert.equal(sent[1].answers.mainIdea,'가상');assert.equal(sent[0].requestId,sent[1].requestId);
 });
+test('수정본 ID가 누락되거나 잘못된 응답은 저장 완료로 처리하지 않고 같은 요청으로 재확인한다',async()=>{
+  const answers={mainIdea:'합성',primary:'합성',support:'합성',relation:'합성',retell:'합성'};
+  for(const invalidId of [undefined,null,'','   ',0,{}]){
+    let valid=false,issued=0;const sent=[];
+    const version=()=>({id:valid?id:invalidId,requestId:id,savedAt:'2026-11-10T00:00:00Z',answers});
+    const saver=RecordClient.createSaver({recordId:id,newId:()=>{issued++;return id;},io:{
+      save:async(_id,p)=>{sent.push(p);return {status:'saved',revision:version()};},
+      readRevision:async()=>({status:'saved',revision:version()})
+    }});
+    await assert.rejects(saver.save(answers),/일치하지/);
+    assert.equal(saver.hasPending(),true);
+    valid=true;
+    assert.equal((await saver.save({...answers,mainIdea:'실패 뒤 편집'})).id,id);
+    assert.equal(issued,1);assert.deepEqual(sent[1],sent[0]);assert.equal(saver.hasPending(),false);
+  }
+});

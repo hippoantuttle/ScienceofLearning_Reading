@@ -58,7 +58,7 @@ const RecordClient = (() => {
         try {
           const receipt = await io.save(recordId, structuredClone(pending));
           const read = await io.readRevision(recordId, pending.requestId);
-          if (receipt?.status !== 'saved' || read?.status !== 'saved' || receipt.revision?.requestId !== pending.requestId || read.revision?.requestId !== pending.requestId || read.revision?.id !== receipt.revision?.id || read.revision?.savedAt !== receipt.revision?.savedAt || !Number.isFinite(Date.parse(read.revision?.savedAt)) || !contract.same(read.revision?.answers, pending.answers)) throw Error('수정본 저장 후 재조회가 일치하지 않습니다. 같은 요청으로 다시 시도하세요.');
+          if (receipt?.status !== 'saved' || read?.status !== 'saved' || typeof receipt.revision?.id !== 'string' || !receipt.revision.id.trim() || receipt.revision?.requestId !== pending.requestId || read.revision?.requestId !== pending.requestId || read.revision?.id !== receipt.revision?.id || read.revision?.savedAt !== receipt.revision?.savedAt || !Number.isFinite(Date.parse(read.revision?.savedAt)) || !contract.same(read.revision?.answers, pending.answers)) throw Error('수정본 저장 후 재조회가 일치하지 않습니다. 같은 요청으로 다시 시도하세요.');
           const result = structuredClone(read.revision); pending = null; return result;
         } finally { busy = false; }
       }

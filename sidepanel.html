@@ -149,10 +149,11 @@
     <section aria-labelledby="submission-heading">
       <h3 id="submission-heading">서버 제출</h3>
       <p>제출 시 중심 생각, 구조도, Retell, 선택 정리와 원문 재확인 여부가 저장됩니다. 기사 전문은 저장하지 않습니다. 제출하려면 상단에서 로그인하세요.</p>
-      <details><summary>글 식별 정보 (선택)</summary>
-        <p>민감한 정보가 없는 공개 글 제목과 출처 사이트 주소만 직접 입력하세요. 주소에는 경로·검색어·로그인 정보를 넣지 마세요. 선택하지 않으면 글 정보 없이 저장합니다.</p>
-        <label for="submission-article-title">공개 글 제목 (200자 이내)</label><input id="submission-article-title" type="text" maxlength="200" autocomplete="off">
+      <details open><summary>내 기록에 표시할 글 제목 (선택)</summary>
+        <p id="submission-article-note">연결한 탭 제목을 자동으로 채웠습니다. 저장할 제목을 확인·수정하고 아래 저장 동의를 선택하세요. 제목에 민감한 정보가 있으면 지우세요. 선택하지 않으면 제목 없이 저장합니다. 기존 기록에는 소급 적용되지 않습니다.</p>
+        <label for="submission-article-title">글 제목 (200자 이내)</label><input id="submission-article-title" type="text" maxlength="200" autocomplete="off" aria-describedby="submission-article-note">
         <label for="submission-source-url">출처 사이트 주소 (예: https://example.com)</label><input id="submission-source-url" type="url" autocomplete="off">
+        <p>출처 사이트 주소는 직접 입력하는 선택 항목입니다. 주소에는 경로·검색어·로그인 정보를 넣지 마세요.</p>
         <label class="check"><input id="submission-article-consent" type="checkbox"> 입력한 제목과 출처 사이트 주소도 저장하는 데 동의합니다.</label>
       </details>
       <label class="check"><input id="submission-consent" type="checkbox"> 위 항목을 제출하고 저장하는 데 동의합니다.</label>

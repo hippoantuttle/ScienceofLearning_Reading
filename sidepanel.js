@@ -19,6 +19,18 @@ function showStatus(message, isError = false) {
   statusElement.textContent = message;
 }
 
+function tabTitleForRecord(value) {
+  if (typeof value !== 'string') return '';
+  const clean = value.toWellFormed().replace(/[\x00-\x1f\x7f]/g, ' ').trim();
+  let title = '';
+  // Respect the input's UTF-16 maxlength without splitting a surrogate pair.
+  for (const character of clean) {
+    if (title.length + character.length > 200) break;
+    title += character;
+  }
+  return title;
+}
+
 analyzeButton.addEventListener('click', async () => {
   if (operationBusy || analyzeButton.disabled) return;
   if (articleSession && !confirm('현재 훈련 종료 후 작성 내용을 삭제하고 새 읽기 전 준비를 시작합니다. 같은 글을 다시 연결해도 새 시도이며 이전 시도의 연속 수행이나 순수 인출 성공으로 취급하지 않습니다. 계속할까요?')) return;
@@ -69,6 +81,8 @@ analyzeButton.addEventListener('click', async () => {
     document.getElementById('retell-view').hidden = true;
     rechecked = false;
     articleSession = { tabId: tab.id, windowId: tab.windowId, url: tab.url, text: response.text, token: response.token, fallback: response.fallback };
+    const titleInput = document.getElementById('submission-article-title');
+    if (titleInput) titleInput.value = tabTitleForRecord(current.title);
     document.getElementById('counts').textContent = `문자 수: ${response.charCount} · 단어 수(공백 기준): ${response.wordCount}`;
     document.getElementById('fallback').textContent = response.fallback ? '주의: 기사 영역을 찾지 못해 페이지 전체 텍스트를 사용했습니다.' : '';
     resultElement.hidden = false;

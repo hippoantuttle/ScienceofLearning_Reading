@@ -1,0 +1,12 @@
+{
+  // 로컬 개발 전용. 이 설정으로 배포하지 않는다.
+  "name": "reading-ai-pilot-local",
+  "main": "server/ai/pilot-local-worker.mjs",
+  "compatibility_date": "2026-01-01",
+  "workers_dev": false,
+  "vars": {
+    "SUPABASE_URL": "https://mxhlxenfboiaywyhgyqs.supabase.co",
+    "ALLOWED_ORIGIN": "chrome-extension://jenapgoakhnmlmjcdnkfakkkgjobbfbb",
+    "PILOT_AI_ENABLED": "false"
+  }
+}

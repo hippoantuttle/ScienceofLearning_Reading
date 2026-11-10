@@ -4,22 +4,25 @@ const AIContract = (() => {
   function validate(data) {
     return Boolean(keysMatch(data, ['terms','background','structureType']) && Array.isArray(data.terms) && data.terms.length <= 3 && data.terms.every(item => keysMatch(item,['term','definition']) && text(item.term,40) && text(item.definition,180)) && Array.isArray(data.background) && data.background.length <= 3 && data.background.every(item => text(item,180)) && ['claim-evidence','cause-effect','problem-solution','unspecified'].includes(data.structureType));
   }
-  function createGate() {
-    let reading = false, used = false, generation = 0;
+  function createGate({allowRepeatedRequests = false} = {}) {
+    let reading = false, used = false, pending = false, generation = 0;
     return {
       async request(fetcher) {
-        if (reading || used) throw new Error('추천은 읽기 전 한 번만 요청할 수 있습니다.');
+        if (reading || pending || (used && !allowRepeatedRequests)) throw new Error('추천은 읽기 전 한 번만 요청할 수 있습니다.');
         used = true;
+        pending = true;
         const id = generation;
         let data;
         try { data = await fetcher(); }
         catch (error) { if (reading || id !== generation) return null; throw error; }
+        finally { if (id === generation) pending = false; }
         if (reading || id !== generation) return null;
         if (!validate(data)) throw new Error('추천 응답 형식이 올바르지 않습니다.');
         return data;
       },
       startReading() { reading = true; generation++; },
-      reset() { reading = false; used = false; generation++; }
+      reset() { reading = false; used = false; pending = false; generation++; },
+      canRequest() { return !reading && !pending && (!used || allowRepeatedRequests); }
     };
   }
   async function requestMock(token, {fetchImpl = fetch, timeoutMs = 5000} = {}) {
@@ -49,15 +52,17 @@ const AIContract = (() => {
     provider: 'AI 공급자 응답에 실패했습니다.'
   };
   // 파일럿 Worker용: 로그인 액세스 토큰과 빈 요청만 전송한다. endpoint는 https 또는 loopback만 허용한다.
-  async function requestPilot(accessToken, endpoint, {fetchImpl = fetch, timeoutMs = 15000} = {}) {
+  async function requestPilot(accessToken, endpoint, {fetchImpl = fetch, timeoutMs = 15000, article} = {}) {
     if (typeof accessToken !== 'string' || !accessToken) throw new Error('로그인이 필요합니다.');
     let url; try { url = new URL(endpoint); } catch { throw new Error('AI 서버 주소가 올바르지 않습니다.'); }
     const loopback = url.protocol === 'http:' && ['127.0.0.1','[::1]','localhost'].includes(url.hostname);
     if ((url.protocol !== 'https:' && !loopback) || url.username || url.password || url.search || url.hash || url.pathname !== '/recommend') throw new Error('AI 서버 주소가 올바르지 않습니다.');
+    if (article !== undefined && (typeof article !== 'string' || !article.trim() || !article.isWellFormed() || article.includes('\0') || article.length > 12000 || new TextEncoder().encode(JSON.stringify({article})).length > 50000)) throw new Error('글 본문을 확인하세요.');
+    if (article !== undefined) url.pathname = '/recommend-article';
     const controller = new AbortController(); let timedOut = false;
     const timer = setTimeout(() => { timedOut = true; controller.abort(); }, timeoutMs);
     try {
-      const response = await fetchImpl(url.href, {method:'POST', headers:{'Content-Type':'application/json',Authorization:`Bearer ${accessToken}`}, body:'{}', credentials:'omit', cache:'no-store', redirect:'error', signal:controller.signal});
+      const response = await fetchImpl(url.href, {method:'POST', headers:{'Content-Type':'application/json',Authorization:`Bearer ${accessToken}`}, body:article === undefined ? '{}' : JSON.stringify({article}), credentials:'omit', cache:'no-store', redirect:'error', signal:controller.signal});
       if (!response.ok) {
         let code; try { code = (await response.json())?.error; } catch { code = undefined; }
         if (PILOT_MESSAGES[code]) throw new Error(PILOT_MESSAGES[code]);

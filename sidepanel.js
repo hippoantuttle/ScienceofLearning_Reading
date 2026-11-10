@@ -8,7 +8,11 @@ let articleSession = null; // In-memory only; bind future actions to this tab an
 let blindPort = null;
 let rechecked = false;
 let operationBusy = false;
-const recommendationGate = AIContract.createGate();
+const allowLocalRepeatedRecommendations = (() => {
+  try { const url = new URL(SubmissionConfig.aiEndpoint); return SubmissionConfig.allowRepeatedRecommendations === true && url.protocol === 'http:' && ['127.0.0.1','localhost','[::1]'].includes(url.hostname); }
+  catch { return false; }
+})();
+const recommendationGate = AIContract.createGate({allowRepeatedRequests:allowLocalRepeatedRecommendations});
 
 function showStatus(message, isError = false) {
   statusElement.setAttribute('role', isError ? 'alert' : 'status');
@@ -56,7 +60,7 @@ analyzeButton.addEventListener('click', async () => {
     document.getElementById('review-view').hidden = true;
     document.getElementById('retell-view').hidden = true;
     rechecked = false;
-    articleSession = { tabId: tab.id, windowId: tab.windowId, url: tab.url, text: response.text, token: response.token };
+    articleSession = { tabId: tab.id, windowId: tab.windowId, url: tab.url, text: response.text, token: response.token, fallback: response.fallback };
     document.getElementById('counts').textContent = `문자 수: ${response.charCount} · 단어 수(공백 기준): ${response.wordCount}`;
     document.getElementById('fallback').textContent = response.fallback ? '주의: 기사 영역을 찾지 못해 페이지 전체 텍스트를 사용했습니다.' : '';
     resultElement.hidden = false;

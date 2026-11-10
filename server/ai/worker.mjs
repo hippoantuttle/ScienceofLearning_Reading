@@ -5,7 +5,7 @@ const keys = (x,k) => x && typeof x === 'object' && !Array.isArray(x) && Object.
 function validRecommendation(x) {
   return keys(x,['terms','background','structureType']) && Array.isArray(x.terms) && x.terms.length <= 3 && x.terms.every(t=>keys(t,['term','definition']) && validText(t.term,40) && validText(t.definition,180)) && Array.isArray(x.background) && x.background.length <= 3 && x.background.every(t=>validText(t,180)) && ['claim-evidence','cause-effect','problem-solution','unspecified'].includes(x.structureType);
 }
-export async function callProvider(key, fetchImpl = fetch, {withUsage=false} = {}) {
+export async function callProvider(key, fetchImpl = fetch, {withUsage=false, articleText} = {}) {
   const controller = new AbortController();
   const timer = setTimeout(()=>controller.abort(),10000);
   try {
@@ -13,7 +13,7 @@ export async function callProvider(key, fetchImpl = fetch, {withUsage=false} = {
       method:'POST', headers:{'Content-Type':'application/json',Authorization:`Bearer ${key}`}, signal:controller.signal,
       body:JSON.stringify({model:'deepseek-flash',thinking:{type:'disabled'},max_tokens:512,response_format:{type:'json_object'},messages:[
         {role:'system',content:SYSTEM_PROMPT},
-        {role:'user',content:'자체 작성 예문: 마을 도서관은 주민을 위해 주말에 문을 연다. 자원봉사자는 도서 정리를 돕는다.'}
+        {role:'user',content:articleText === undefined ? '자체 작성 예문: 마을 도서관은 주민을 위해 주말에 문을 연다. 자원봉사자는 도서 정리를 돕는다.' : JSON.stringify({article:articleText})}
       ]})
     });
     if (!response.ok) throw new Error('provider failed');

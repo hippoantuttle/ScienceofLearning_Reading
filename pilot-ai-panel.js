@@ -9,18 +9,31 @@ function pilotAiClear() {
   pilotAiEl('ai-result').textContent = '';
   pilotAiEl('ai-result').hidden = true;
 }
-function pilotAiEnable() { pilotAiEl('ai-recommend').disabled = false; }
+function pilotAiEnable() {
+  pilotAiEl('ai-recommend').disabled = false;
+  pilotAiEl('article-ai-preview').value = articleSession?.fallback ? '' : (articleSession?.text || '');
+  pilotAiEl('article-ai-consent').checked = false;
+  pilotAiEl('article-ai-recommend').disabled = !SubmissionConfig.articleTestEnabled || !!articleSession?.fallback;
+  pilotAiEl('article-ai-status').textContent = articleSession?.fallback ? '본문 영역을 식별하지 못해 실제 글 전송을 차단했습니다.' : (!SubmissionConfig.articleTestEnabled ? '실제 글 추천은 아직 준비 중입니다.' : '전송할 본문을 확인하세요.');
+}
 function resetPilotAi() {
   pilotAiClear();
   pilotAiEl('ai-recommend').disabled = true;
   pilotAiEl('ai-password').value = '';
   pilotAiEl('ai-status').textContent = '';
+  pilotAiEl('article-ai-preview').value = '';
+  pilotAiEl('article-ai-consent').checked = false;
+  pilotAiEl('article-ai-recommend').disabled = true;
+  pilotAiEl('article-ai-status').textContent = '';
 }
 function pilotAiStartReading() {
   pilotAiClear();
   pilotAiEl('ai-password').value = '';
   pilotAiEl('ai-recommend').disabled = true;
   pilotAiEl('ai-status').textContent = '읽기 시작 후에는 AI 추천을 요청할 수 없습니다.';
+  pilotAiEl('article-ai-preview').value = '';
+  pilotAiEl('article-ai-consent').checked = false;
+  pilotAiEl('article-ai-recommend').disabled = true;
 }
 pilotAiEl('ai-login').addEventListener('click', async () => {
   const password = pilotAiEl('ai-password');
@@ -31,6 +44,33 @@ pilotAiEl('ai-login').addEventListener('click', async () => {
     status.textContent = '로그인했습니다.';
   } catch (error) { status.textContent = error?.message || '로그인하지 못했습니다.'; }
   finally { password.value = ''; }
+});
+pilotAiEl('article-ai-recommend').addEventListener('click', async () => {
+  const button = pilotAiEl('article-ai-recommend');
+  const status = pilotAiEl('article-ai-status');
+  if (button.disabled) return;
+  try {
+    if (!SubmissionConfig.articleTestEnabled || !articleSession || articleSession.fallback) throw new Error('실제 글 추천을 사용할 수 없습니다.');
+    if (!pilotAiEl('article-ai-consent').checked) throw new Error('전송할 본문 확인과 동의가 필요합니다.');
+    const session = articleSession;
+    const article = session.text;
+    if (pilotAiEl('article-ai-preview').value !== article) throw new Error('전송할 본문을 다시 확인하세요.');
+    const token = panelFlow().getToken();
+    if (!token) throw new Error('먼저 로그인하세요.');
+    await validateBoundTab();
+    if (articleSession !== session || !pilotAiEl('article-ai-consent').checked || pilotAiEl('article-ai-preview').value !== article) throw new Error('전송할 본문을 다시 확인하세요.');
+    button.disabled = true;
+    status.textContent = 'AI 추천을 요청하고 있습니다.';
+    const data = await recommendationGate.request(() => AIContract.requestPilot(token, SubmissionConfig.aiEndpoint, {article}));
+    if (!data) return;
+    const result = pilotAiEl('ai-result');
+    result.textContent = `실제 글 기반 추천\n${data.terms.map(item => `${item.term}: ${item.definition}`).join('\n')}\n${data.background.join('\n')}\n구조도 유형: ${PILOT_AI_TYPE_LABEL[data.structureType]} (참고용, 직접 선택)`;
+    result.hidden = false;
+    status.textContent = '결과는 참고용이며 자동으로 입력되지 않습니다.';
+  } catch (error) {
+    const safe = [...PILOT_AI_SAFE_ERRORS, '실제 글 추천을 사용할 수 없습니다.', '전송할 본문 확인과 동의가 필요합니다.', '전송할 본문을 다시 확인하세요.', '먼저 로그인하세요.', '글 본문을 확인하세요.', '추천은 읽기 전 한 번만 요청할 수 있습니다.'];
+    status.textContent = safe.includes(error?.message) ? error.message : 'AI 추천 요청을 완료하지 못했습니다.';
+  } finally { if (allowLocalRepeatedRecommendations && recommendationGate.canRequest() && articleSession && !articleSession.fallback) button.disabled = false; }
 });
 pilotAiEl('ai-recommend').addEventListener('click', async () => {
   const button = pilotAiEl('ai-recommend');
@@ -53,5 +93,5 @@ pilotAiEl('ai-recommend').addEventListener('click', async () => {
     const message = error?.message || '';
     const known = PILOT_AI_SAFE_ERRORS.includes(message) || ['먼저 글을 연결하세요.', 'AI 추천 서버가 아직 설정되지 않았습니다.', '먼저 로그인하세요.', '추천은 읽기 전 한 번만 요청할 수 있습니다.'].includes(message);
     status.textContent = `${known ? message : 'AI 추천 서버에 연결하지 못했습니다.'} 자료 없이 계속할 수 있습니다.`;
-  }
+  } finally { if (allowLocalRepeatedRecommendations && recommendationGate.canRequest() && articleSession) button.disabled = false; }
 });

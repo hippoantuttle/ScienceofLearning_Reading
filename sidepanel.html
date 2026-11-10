@@ -20,6 +20,7 @@
   <script src="sidepanel.js" defer></script>
   <script src="submission-panel.js" defer></script>
   <script src="pilot-ai-panel.js" defer></script>
+  <script src="feedback-panel.js" defer></script>
 </head>
 <body><main>
   <h1>한국어 독해 훈련</h1>
@@ -41,7 +42,7 @@
     <p>로컬 모의 서버에는 빈 요청만 전송합니다. 기사와 작성 답안은 보내지 않습니다. 실제 AI 결과가 아닙니다.</p>
     <section aria-labelledby="pilot-ai-heading">
       <h3 id="pilot-ai-heading">AI 읽기 전 추천 (파일럿)</h3>
-      <p>로그인한 초대 참가자만 사용합니다. 현재 단계는 서버에 고정된 가상 예문으로 시험하며, 읽은 글·URL·답안은 전송하지 않고 결과도 읽은 글과 무관합니다. 읽기를 시작하면 요청할 수 없고, 한 번만 요청할 수 있습니다.</p>
+      <p>로그인한 초대 참가자만 사용합니다. 아래 가상 예문 시험은 읽은 글·URL·답안을 전송하지 않습니다. 읽기를 시작하면 추천을 요청할 수 없습니다. 기본 설정은 한 시도에 한 번이며, 로컬 개발 시험에서는 반복할 수 있습니다.</p>
       <label for="ai-email">이메일</label><input id="ai-email" type="email" autocomplete="username">
       <label for="ai-password">비밀번호</label><input id="ai-password" type="password" autocomplete="current-password">
       <button id="ai-login" type="button">로그인</button>
@@ -49,6 +50,14 @@
       <div id="ai-result" hidden aria-live="polite"></div>
       <p id="ai-status" role="status"></p>
       <p>요청하지 않아도 자료 없이 계속할 수 있습니다.</p>
+      <section aria-labelledby="article-ai-heading">
+        <h4 id="article-ai-heading">실제 글 기반 추천 (본인 시험 준비)</h4>
+        <p>아래 본문 전체가 AI 서버를 거쳐 DeepSeek에 전송됩니다. URL과 작성 답안은 보내지 않습니다. 제공자의 데이터 보관·학습 이용·처리 위치는 아직 확인 중이므로 이 기능은 기본적으로 꺼져 있습니다. 전송 권한이 있는 글만 사용하세요.</p>
+        <label for="article-ai-preview">전송할 본문 미리보기</label><textarea id="article-ai-preview" rows="5" readonly></textarea>
+        <label><input id="article-ai-consent" type="checkbox"> 위 본문을 확인했으며 AI 제공자 전송에 동의합니다.</label>
+        <button id="article-ai-recommend" type="button" disabled>실제 글로 추천 요청</button>
+        <p id="article-ai-status" role="status" aria-live="polite"></p>
+      </section>
     </section>
     <label for="mock-token">로컬 테스트 토큰 (이 패널에서만 사용)</label><input id="mock-token" type="password" autocomplete="off">
     <button id="mock-recommend" type="button">로컬 모의 응답 요청</button>
@@ -75,4 +84,19 @@
   </section>
   <section id="retell-view" aria-labelledby="step3" hidden><h2 id="step3">Retell</h2><p>원문을 가렸습니다. 기억나는 내용을 자신의 말로 정리하세요. 가림은 보안 장치가 아닙니다.</p><p id="revisit-note" role="status"></p><label for="retell-input">다시 말하기</label><textarea id="retell-input" rows="5"></textarea><button id="back-to-reading" type="button">읽기로 돌아가기</button><button id="to-review" type="button">최종 확인</button><button id="end-training" type="button">훈련 종료</button></section>
   <section id="review-view" aria-labelledby="step4" hidden><h2 id="step4">최종 확인</h2><dl><dt>중심 생각</dt><dd id="summary-main"></dd><dt>구조도 유형</dt><dd id="summary-type"></dd><dt>핵심 정보</dt><dd id="summary-primary"></dd><dt>보조 정보</dt><dd id="summary-support"></dd><dt>관계</dt><dd id="summary-relation"></dd><dt>Retell</dt><dd id="summary-retell"></dd></dl><label for="reflection">감상 (선택)</label><textarea id="reflection"></textarea><label for="new-words">새 어휘 (선택)</label><textarea id="new-words"></textarea><label for="interests">관심 분야 (선택)</label><textarea id="interests"></textarea><button id="finish" type="button">로컬 작성 완료</button><p id="finish-status" role="status"></p><p>아래는 별도의 고정 합성 예시만 사용하는 메모리 모의 검사입니다. 실제 작성 내용은 제출·저장하지 않습니다.</p><button id="synthetic-submit" type="button">합성 예시 모의 저장·재조회</button><p id="synthetic-submit-status" role="status" aria-live="polite"></p><section aria-labelledby="submission-heading"><h3 id="submission-heading">서버 제출 (설정 전 비활성)</h3><p>제출 시 중심 생각, 구조도, Retell, 선택 정리와 원문 재확인 여부가 저장됩니다. 기사 전문·제목·주소는 포함하지 않습니다. 제출 기능은 운영 설정과 승인 전 사용할 수 없습니다.</p><label for="submission-email">이메일</label><input id="submission-email" type="email" autocomplete="username"><label for="submission-password">비밀번호</label><input id="submission-password" type="password" autocomplete="current-password"><button id="submission-login" type="button">로그인</button><label><input id="submission-consent" type="checkbox"> 위 항목을 제출하고 저장하는 데 동의합니다.</label><button id="submission-send" type="button">제출 및 저장 확인</button><p id="submission-status" role="status" aria-live="polite"></p></section></section>
+  <section id="feedback-section" hidden aria-labelledby="feedback-heading">
+    <h2 id="feedback-heading">제출 후 피드백과 직접 수정</h2>
+    <p>저장 확인된 중심 생각·구조도·Retell과 아래 글을 AI 제공자 DeepSeek에 전송합니다. 제공자의 보관·학습 이용·처리 위치는 확인 중입니다. 민감한 정보가 없는 시험용 자료만 사용하세요.</p>
+    <label for="feedback-article">전송할 글 미리보기</label><textarea id="feedback-article" rows="5" readonly></textarea>
+    <label><input id="feedback-consent" type="checkbox"> 글과 제출한 답안을 AI 제공자에 전송하는 데 동의합니다.</label>
+    <button id="feedback-request" type="button" disabled>제출 후 AI 피드백 요청</button>
+    <p id="feedback-status" role="status" aria-live="polite"></p><div id="feedback-result" aria-live="polite"></div>
+    <h3>직접 수정</h3><p>수정 내용과 비교는 현재 패널에서만 유지되며 서버에 저장되지 않습니다.</p>
+    <label for="feedback-main">중심 생각</label><textarea id="feedback-main" rows="3"></textarea>
+    <label for="feedback-primary">핵심 정보</label><textarea id="feedback-primary" rows="3"></textarea>
+    <label for="feedback-support">보조 정보</label><textarea id="feedback-support" rows="3"></textarea>
+    <label for="feedback-relation">관계 설명</label><textarea id="feedback-relation" rows="3"></textarea>
+    <label for="feedback-retell">Retell</label><textarea id="feedback-retell" rows="3"></textarea>
+    <button id="feedback-compare" type="button">최초본과 수정본 비교</button><pre id="feedback-comparison"></pre>
+  </section>
 </main></body></html>

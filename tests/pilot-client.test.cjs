@@ -3,6 +3,13 @@ const assert=require('node:assert/strict');
 const {validate,requestPilot}=require('../ai-client.js');
 const good={terms:[],background:[],structureType:'unspecified'};
 const URL_OK='https://ai.example.test/recommend';
+test('실제 글 요청은 본문만 별도 경로로 전송하고 잘못된 입력은 거부한다',async()=>{
+ let sent; const fake=async(url,o)=>{sent={url,o};return {ok:true,status:200,json:async()=>({kind:'pilot',recommendation:good})}};
+ await requestPilot('tok',URL_OK,{article:'자체 작성 가상 글',fetchImpl:fake});
+ assert.equal(sent.url,'https://ai.example.test/recommend-article');
+ assert.deepEqual(JSON.parse(sent.o.body),{article:'자체 작성 가상 글'});
+ for(const article of ['', '가'.repeat(12001), '\u0000']) await assert.rejects(requestPilot('tok',URL_OK,{article,fetchImpl:fake}),/본문/);
+});
 test('파일럿 클라이언트는 토큰과 빈 본문만 보내고 검증된 추천만 반환한다',async()=>{
  let sent;const fake=async(url,o)=>{sent={url,o};return {ok:true,status:200,json:async()=>({kind:'pilot',recommendation:good,usage:{}})}};
  assert.deepEqual(await requestPilot('tok',URL_OK,{fetchImpl:fake}),good);assert.equal(validate(good),true);

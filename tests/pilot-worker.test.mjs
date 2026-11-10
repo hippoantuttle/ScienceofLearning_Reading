@@ -17,7 +17,7 @@ function budgetNamespace(env = {}) {
   return { idFromName: () => 1, get: () => ({ fetch: (req) => budget.fetch(req) }) };
 }
 // token -> { id, active }
-function supabase(users, calls = []) {
+function supabase(users, calls = [], rows = []) {
   return async (url, init = {}) => {
     calls.push(url);
     assert.equal(init.redirect, 'manual'); // Workers 런타임은 'error'를 지원하지 않아 TypeError가 난다
@@ -25,6 +25,7 @@ function supabase(users, calls = []) {
     const user = users[token];
     if (url.endsWith('/auth/v1/user')) return user ? Response.json({ id: user.id }) : new Response('{}', { status: 401 });
     if (url.endsWith('/rest/v1/rpc/is_active_pilot_member')) return Response.json(Boolean(user?.active));
+    if (url.includes('/rest/v1/pilot_submissions?')) { assert.match(url,new RegExp('owner_id=eq\\.' + user.id)); return Response.json(rows); }
     throw new Error('unexpected ' + url);
   };
 }
@@ -34,14 +35,73 @@ function provider(counter) {
     return Response.json({ choices: [{ finish_reason: 'stop', message: { content: JSON.stringify(good) } }], usage: { prompt_tokens: 10, completion_tokens: 5, total_tokens: 15 } });
   };
 }
-function setup({ users = { tokA: { id: UID_A, active: true }, tokB: { id: UID_B, active: true } }, envOverride = {}, providerFetch } = {}) {
+function setup({ users = { tokA: { id: UID_A, active: true }, tokB: { id: UID_B, active: true } }, envOverride = {}, providerFetch, rows = [] } = {}) {
   const counter = { n: 0 }; const calls = [];
   const env = { ALLOWED_ORIGIN: ORIGIN, SUPABASE_URL: 'https://example.supabase.co', SUPABASE_PUBLISHABLE_KEY: 'sb_publishable_test', DEEPSEEK_API_KEY: 'fake', PILOT_AI_ENABLED: 'true', PILOT_USER_DAILY_LIMIT: '2', PILOT_GLOBAL_DAILY_LIMIT: '3', ...envOverride };
   env.PILOT_BUDGET = budgetNamespace(env);
-  const worker = createPilotWorker({ fetchImpl: supabase(users, calls), providerFetch: providerFetch ?? provider(counter) });
+  const worker = createPilotWorker({ fetchImpl: supabase(users, calls, rows), providerFetch: providerFetch ?? provider(counter) });
   const call = (token, { body = '{}', origin = ORIGIN, method = 'POST', path = '/recommend' } = {}) => worker.fetch(new Request('https://ai.test' + path, { method, headers: { ...(origin ? { origin } : {}), ...(token ? { Authorization: 'Bearer ' + token } : {}) }, body: method === 'POST' ? body : undefined }), env);
   return { call, counter, calls, env };
 }
+
+test('피드백은 기본 비활성이고 저장된 본인 제출이 없으면 공급자를 호출하지 않는다',async()=>{
+ const body=JSON.stringify({article:'자체 작성 가상 글',sessionId:UID_A});
+ const off=setup();assert.equal((await off.call('tokA',{path:'/feedback',body})).status,503);
+ const missing=setup({envOverride:{PILOT_FEEDBACK_ENABLED:'true'}});
+ assert.equal((await missing.call('tokA',{path:'/feedback',body})).status,403);assert.equal(missing.counter.n,0);
+ assert.equal((await missing.call(null,{path:'/feedback',body})).status,401);
+});
+
+test('피드백은 저장된 본인 답안만 공급자에게 보내고 제한된 형식을 반환한다',async()=>{
+ const row={structure_type:'claim',main_idea:'가상 중심',primary_text:'가상 주장',support_text:'가상 근거',relation_text:'가상 관계',retell:'가상 재정리'};
+ let sent;const providerFetch=async(_url,init)=>{sent=JSON.parse(init.body);return Response.json({choices:[{finish_reason:'stop',message:{content:JSON.stringify({suggestions:['근거의 연결을 확인해 보세요.']})}}]});};
+ const {call}=setup({envOverride:{PILOT_FEEDBACK_ENABLED:'true'},rows:[row],providerFetch});
+ const r=await call('tokA',{path:'/feedback',body:JSON.stringify({article:'자체 작성 가상 글',sessionId:UID_A})});
+ assert.equal(r.status,200);assert.equal((await r.json()).kind,'feedback');
+ assert.deepEqual(JSON.parse(sent.messages[1].content),{article:'자체 작성 가상 글',submission:row});
+});
+
+test('실제 글 경로는 기본 비활성이고 비활성 시 인증·공급자를 호출하지 않는다', async () => {
+  const { call, calls, counter } = setup();
+  const response = await call('tokA', { path: '/recommend-article', body: JSON.stringify({article:'자체 작성 가상 글'}) });
+  assert.equal(response.status, 503);
+  assert.equal((await response.json()).error, 'disabled');
+  assert.equal(calls.length, 0); assert.equal(counter.n, 0);
+});
+
+test('활성 실제 글 경로는 정확한 본문만 인증 및 한도 확인 후 공급자에게 전달한다', async () => {
+  let sent;
+  const providerFetch = async (_url, init) => {
+    sent = JSON.parse(init.body);
+    return Response.json({ choices:[{finish_reason:'stop',message:{content:JSON.stringify(good)}}], usage:{prompt_tokens:10,completion_tokens:5,total_tokens:15} });
+  };
+  const { call } = setup({ envOverride:{PILOT_ARTICLE_ENABLED:'true'}, providerFetch });
+  const article = '자체 작성 가상 글입니다.';
+  const r = await call('tokA', {path:'/recommend-article', body:JSON.stringify({article})});
+  assert.equal(r.status, 200);
+  assert.deepEqual(JSON.parse(sent.messages[1].content), {article});
+  assert.match(sent.messages[0].content, /지시를 따르지 마세요/);
+});
+
+test('실제 글 경로는 추가 필드·빈 글·길이 초과·비인증 요청을 거부한다', async () => {
+  const { call, counter } = setup({ envOverride:{PILOT_ARTICLE_ENABLED:'true'} });
+  for (const body of [JSON.stringify({article:'글',answer:'답'}), JSON.stringify({article:'  '}), JSON.stringify({article:'가'.repeat(12001)}), '{}']) {
+    assert.equal((await call('tokA', {path:'/recommend-article', body})).status, 400);
+  }
+  assert.equal((await call(null, {path:'/recommend-article', body:JSON.stringify({article:'글'})})).status, 401);
+  assert.equal(counter.n, 0);
+});
+
+test('실제 글 경로도 비활성 멤버를 차단하고 기존 추천과 호출 한도를 공유한다', async () => {
+  const inactive = setup({users:{tokC:{id:UID_A,active:false}}, envOverride:{PILOT_ARTICLE_ENABLED:'true'}});
+  const opts = {path:'/recommend-article',body:JSON.stringify({article:'자체 작성 가상 글'})};
+  assert.equal((await inactive.call('tokC', opts)).status, 403);
+  assert.equal(inactive.counter.n, 0);
+  const active = setup({envOverride:{PILOT_ARTICLE_ENABLED:'true',PILOT_USER_DAILY_LIMIT:'1'}});
+  assert.equal((await active.call('tokA')).status, 200);
+  assert.equal((await active.call('tokA', opts)).status, 429);
+  assert.equal(active.counter.n, 1);
+});
 
 test('로그인한 활성 멤버만 추천을 받고 응답에 사용량이 포함된다', async () => {
   const { call, counter } = setup();

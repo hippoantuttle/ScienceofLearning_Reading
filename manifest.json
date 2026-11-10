@@ -6,7 +6,7 @@
   "minimum_chrome_version": "116",
   "description": "스스로 읽고 정리하는 영자신문 독해 훈련의 초기 화면입니다.",
   "permissions": ["sidePanel", "activeTab", "scripting"],
-  "host_permissions": ["http://127.0.0.1:8787/*", "https://mxhlxenfboiaywyhgyqs.supabase.co/*", "https://reading-submissions-pilot.patrick020308.workers.dev/*"],
+  "host_permissions": ["http://127.0.0.1:8787/*", "http://127.0.0.1:8793/*", "https://mxhlxenfboiaywyhgyqs.supabase.co/*", "https://reading-submissions-pilot.patrick020308.workers.dev/*"],
   "background": { "service_worker": "background.js" },
   "action": { "default_title": "독해 훈련 사이드 패널 열기" },
   "side_panel": { "default_path": "sidepanel.html" }

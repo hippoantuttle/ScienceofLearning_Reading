@@ -1,8 +1,10 @@
 'use strict';
 let panelSubmissionFlow=null;
-function resetPanelSubmission(){panelSubmissionFlow=null;if(typeof resetFeedbackPanel==='function')resetFeedbackPanel();const password=document.getElementById('submission-password');if(password)password.value='';const status=document.getElementById('submission-status');if(status)status.textContent='';const consent=document.getElementById('submission-consent');if(consent)consent.checked=false;}
-function panelFlow(){if(!SubmissionConfig.authUrl||!SubmissionConfig.publicKey||!SubmissionConfig.endpoint)throw Error('제출 서버가 아직 설정되지 않았습니다.');if(!panelSubmissionFlow){const login=SubmissionAuth.createLogin({baseUrl:SubmissionConfig.authUrl,publicKey:SubmissionConfig.publicKey});const membership=SubmissionHttp.createMembershipCheck({baseUrl:SubmissionConfig.authUrl,publicKey:SubmissionConfig.publicKey});panelSubmissionFlow=SubmissionFlow.createFlow({login,adapter:token=>({...SubmissionHttp.createHttpAdapter({endpoint:SubmissionConfig.endpoint,getToken:async()=>token}),checkMember:()=>membership(token)}),newId:()=>crypto.randomUUID()});}return panelSubmissionFlow;}
-document.getElementById('submission-login').addEventListener('click',async()=>{const pass=document.getElementById('submission-password');try{const flow=panelFlow();await flow.signIn(document.getElementById('submission-email').value,pass.value);document.getElementById('submission-status').textContent='로그인했습니다. 제출 전 저장 항목과 동의를 확인하세요.';}catch(e){document.getElementById('submission-status').textContent=e.message||'로그인하지 못했습니다.';}finally{pass.value='';}});
+let panelAccount=null; // {token, identity}: 새 시도로 flow를 다시 만들 때 로그인을 이어 쓰기 위한 패널 메모리 값.
+function rememberPanelAccount(){const flow=panelSubmissionFlow;if(flow&&typeof flow.getToken==='function'&&flow.getToken()&&typeof flow.getIdentity==='function')panelAccount={token:flow.getToken(),identity:flow.getIdentity()};}
+function resetPanelSubmission(){rememberPanelAccount();panelSubmissionFlow=null;if(typeof resetFeedbackPanel==='function')resetFeedbackPanel();const status=document.getElementById('submission-status');if(status)status.textContent='';const consent=document.getElementById('submission-consent');if(consent)consent.checked=false;}
+function panelSignOut(){panelAccount=null;panelSubmissionFlow=null;if(typeof resetFeedbackPanel==='function')resetFeedbackPanel();const status=document.getElementById('submission-status');if(status)status.textContent='';}
+function panelFlow(){if(!SubmissionConfig.authUrl||!SubmissionConfig.publicKey||!SubmissionConfig.endpoint)throw Error('제출 서버가 아직 설정되지 않았습니다.');if(!panelSubmissionFlow){const login=SubmissionAuth.createLogin({baseUrl:SubmissionConfig.authUrl,publicKey:SubmissionConfig.publicKey});const membership=SubmissionHttp.createMembershipCheck({baseUrl:SubmissionConfig.authUrl,publicKey:SubmissionConfig.publicKey});panelSubmissionFlow=SubmissionFlow.createFlow({login,adapter:token=>({...SubmissionHttp.createHttpAdapter({endpoint:SubmissionConfig.endpoint,getToken:async()=>token}),checkMember:()=>membership(token)}),newId:()=>crypto.randomUUID()});if(panelAccount&&typeof panelSubmissionFlow.adopt==='function')panelSubmissionFlow.adopt(panelAccount.token,panelAccount.identity);}return panelSubmissionFlow;}
 document.getElementById('submission-send').addEventListener('click',async()=>{
  const button=document.getElementById('submission-send'),status=document.getElementById('submission-status');
  if(button.disabled)return;button.disabled=true;
@@ -15,6 +17,6 @@ document.getElementById('submission-send').addEventListener('click',async()=>{
   if(panelSubmissionFlow!==flow || (typeof articleSession!=='undefined' && articleSession!==submittedSession))return;
   status.textContent=`저장 및 재조회 확인: ${receipt.submissionId} (${receipt.savedAt})`;
   if(typeof feedbackSubmissionReady==='function'&&typeof flow.verifiedSnapshot==='function')feedbackSubmissionReady(flow.verifiedSnapshot(),flow);
- }catch(e){status.textContent=(e.message||'제출 실패')+' 작성 내용은 유지됩니다. 이미 전송을 시작했다면 재시도는 최초 제출 내용으로 진행됩니다.';}
+ }catch(e){status.textContent=(e.message==='로그인이 필요합니다.'?'상단에서 로그인한 뒤 다시 제출하세요.':(e.message||'제출 실패'))+' 작성 내용은 유지됩니다. 이미 전송을 시작했다면 재시도는 최초 제출 내용으로 진행됩니다.';}
  finally{button.disabled=false;}
 });

@@ -8,3 +8,10 @@ test('저장 응답과 재조회가 일치해야 완료하고 실패하면 같�
 test('비활성 회원은 인증 토큰이 있어도 로그인 완료로 처리하지 않는다',async()=>{const flow=createFlow({newId:()=> 'id',login:async()=> 'token',adapter:()=>({checkMember:async()=>false,save(){throw Error('must not save')},read(){}})});await assert.rejects(flow.signIn('inactive@example.invalid','fake'),/초대|회원/);await assert.rejects(flow.submit(input),/로그인/);});
 test('대기 중인 제출은 다른 계정으로 로그인해 재시도할 수 없다',async()=>{const flow=createFlow({newId:()=> 'id',login:async()=> 'token',adapter:()=>({checkMember:async()=>true,save:async()=>{throw Error('offline')},read:async()=>{}})});await flow.signIn('a@example.invalid','fake');await assert.rejects(flow.submit(input));await assert.rejects(flow.signIn('b@example.invalid','fake'),/같은 계정/);});
 test('로그인 없이 전송하지 않고 빈 입력은 거부한다',async()=>{const flow=createFlow({newId:()=> 'id',login:async()=> 't',adapter:()=>({save(){throw Error('must not save')},read(){}})});await assert.rejects(flow.submit(input),/로그인/);await assert.rejects(flow.signIn('',''),/입력/)});
+test('새 시도 flow는 확인된 로그인을 이어받되 대기 중인 제출이 있으면 거부하고 신원을 노출한다',async()=>{
+ const make=()=>createFlow({newId:()=> 'id',login:async()=> 'token',adapter:()=>({checkMember:async()=>true,save:async()=>{throw Error('offline')},read:async()=>{}})});
+ const first=make();assert.equal(first.getIdentity(),null);await first.signIn(' A@example.invalid ','fake');assert.equal(first.getIdentity(),'a@example.invalid');
+ const next=make();next.adopt(first.getToken(),first.getIdentity());assert.equal(next.getToken(),'token');assert.equal(next.getIdentity(),'a@example.invalid');
+ await assert.rejects(next.submit(input));assert.throws(()=>next.adopt('other','b@example.invalid'),/기존 제출/);
+ assert.throws(()=>make().adopt('',''),/로그인 정보/);
+});

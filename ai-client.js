@@ -76,6 +76,11 @@ const AIContract = (() => {
     } catch (error) { if (timedOut) throw new Error('AI 추천 서버 응답 시간이 초과되었습니다.'); throw error; }
     finally { clearTimeout(timer); }
   }
-  return {validate, createGate, requestMock, requestPilot, pilotMessages: Object.values(PILOT_MESSAGES)};
+  // 개발 전용 기능(반복 추천·개발자 도구 표시)의 공용 판정: http 루프백 주소만 로컬로 본다.
+  function isLoopbackEndpoint(endpoint) {
+    try { const url = new URL(endpoint); return url.protocol === 'http:' && ['127.0.0.1','localhost','[::1]'].includes(url.hostname); }
+    catch { return false; }
+  }
+  return {validate, createGate, requestMock, requestPilot, isLoopbackEndpoint, pilotMessages: Object.values(PILOT_MESSAGES)};
 })();
 if (typeof module !== 'undefined') module.exports = AIContract;

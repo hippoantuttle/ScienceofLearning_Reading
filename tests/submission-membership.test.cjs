@@ -27,7 +27,7 @@ test('패널의 회원 확인은 제출 Worker의 GET이 아니라 Supabase 확�
   SubmissionHttp:{createHttpAdapter:()=>({checkMember:async()=>{httpCalls++;return false},save:async()=>{},read:async()=>{}}),createMembershipCheck:a=>{membershipArgs=a;return async t=>{checked.push(t);return true}}},
   SubmissionFlow:{createFlow:a=>{adapterFactory=a.adapter;return {signIn:async()=>{},hasPending:()=>false}}},crypto:{randomUUID:()=> 'id'}};
  vm.runInNewContext(fs.readFileSync('submission-panel.js','utf8'),ctx);
- await e['submission-login'].click();
+ await ctx.panelFlow().signIn('a@example.invalid','fake');
  assert.equal(JSON.stringify(membershipArgs),JSON.stringify({baseUrl:'https://example.supabase.co',publicKey:'public-key'}));
  const adapter=adapterFactory('tok');assert.equal(await adapter.checkMember(),true);assert.equal(JSON.stringify(checked),JSON.stringify(['tok']));assert.equal(httpCalls,0);
  assert.equal(typeof adapter.save,'function');assert.equal(typeof adapter.read,'function');

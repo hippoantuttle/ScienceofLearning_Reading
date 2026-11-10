@@ -1,6 +1,6 @@
 'use strict';
 // 파일럿 AI 읽기 전 추천 패널. sidepanel.js의 recommendationGate·articleSession과
-// submission-panel.js의 panelFlow를 공유한다(같은 로그인 세션 사용).
+// submission-panel.js의 panelFlow를 공유한다(상단 계정 바 account-bar.js의 로그인 세션 사용).
 // 읽기 중 AI 개입 배제: 게이트가 읽기 시작 후·재요청·지연 응답을 막는다.
 const PILOT_AI_TYPE_LABEL = { 'claim-evidence': '주장–근거', 'cause-effect': '원인–결과', 'problem-solution': '문제–해결', unspecified: '추천 없음 (직접 선택)' };
 const PILOT_AI_SAFE_ERRORS = [...(AIContract.pilotMessages || []), 'AI 추천 서버 응답 시간이 초과되었습니다.', 'AI 응답 형식이 올바르지 않습니다.', 'AI 서버 주소가 올바르지 않습니다.', 'AI 추천 서버 요청이 실패했습니다.'];
@@ -35,16 +35,6 @@ function pilotAiStartReading() {
   pilotAiEl('article-ai-consent').checked = false;
   pilotAiEl('article-ai-recommend').disabled = true;
 }
-pilotAiEl('ai-login').addEventListener('click', async () => {
-  const password = pilotAiEl('ai-password');
-  const status = pilotAiEl('ai-status');
-  try {
-    const flow = panelFlow();
-    await flow.signIn(pilotAiEl('ai-email').value, password.value);
-    status.textContent = '로그인했습니다.';
-  } catch (error) { status.textContent = error?.message || '로그인하지 못했습니다.'; }
-  finally { password.value = ''; }
-});
 pilotAiEl('article-ai-recommend').addEventListener('click', async () => {
   const button = pilotAiEl('article-ai-recommend');
   const status = pilotAiEl('article-ai-status');

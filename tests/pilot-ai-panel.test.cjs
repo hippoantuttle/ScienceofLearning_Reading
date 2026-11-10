@@ -124,13 +124,6 @@ test('새 시도(재연결)는 이전 결과·비밀번호를 지우고 다시 �
  await e['ai-recommend'].handlers.click();assert.equal(calls.pilot,2);
 });
 
-test('AI 로그인 버튼은 비밀번호를 즉시 비운다',async()=>{
- const {e,calls}=setup({requestPilot:async()=>good});
- e['ai-email'].value='a@example.invalid';e['ai-password'].value='pw';
- await e['ai-login'].handlers.click();
- assert.equal(calls.logins,1);assert.equal(e['ai-password'].value,'');
-});
-
 test('HTML은 새 요소와 스크립트 순서를 갖고 AI 호출 코드는 읽기 단계 입력을 읽지 않는다',()=>{
  const html=read('sidepanel.html');
  for(const id of ['ai-email','ai-password','ai-login','ai-recommend','ai-result','ai-status']) assert.match(html,new RegExp(`id="${id}"`));

@@ -9,7 +9,7 @@ let blindPort = null;
 let rechecked = false;
 let operationBusy = false;
 const allowLocalRepeatedRecommendations = (() => {
-  try { const url = new URL(SubmissionConfig.aiEndpoint); return SubmissionConfig.allowRepeatedRecommendations === true && url.protocol === 'http:' && ['127.0.0.1','localhost','[::1]'].includes(url.hostname); }
+  try { return SubmissionConfig.allowRepeatedRecommendations === true && AIContract.isLoopbackEndpoint(SubmissionConfig.aiEndpoint); }
   catch { return false; }
 })();
 const recommendationGate = AIContract.createGate({allowRepeatedRequests:allowLocalRepeatedRecommendations});

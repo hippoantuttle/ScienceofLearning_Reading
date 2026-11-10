@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { createPilotWorker, PilotBudget, limitsFrom } from '../server/ai/pilot-worker.mjs';
+import { createPilotWorker, PilotBudget, limitsFrom, selfTestSettings } from '../server/ai/pilot-worker.mjs';
 
 const ORIGIN = 'chrome-extension://testextensionid';
 const UID_A = '11111111-1111-4111-8111-111111111111';
@@ -43,6 +43,35 @@ function setup({ users = { tokA: { id: UID_A, active: true }, tokB: { id: UID_B,
   const call = (token, { body = '{}', origin = ORIGIN, method = 'POST', path = '/recommend' } = {}) => worker.fetch(new Request('https://ai.test' + path, { method, headers: { ...(origin ? { origin } : {}), ...(token ? { Authorization: 'Bearer ' + token } : {}) }, body: method === 'POST' ? body : undefined }), env);
   return { call, counter, calls, env };
 }
+
+test('본인 시험은 지정한 활성 계정만 허용하며 다른 계정은 예산과 공급자에 접근하지 않는다', async () => {
+  const options={PILOT_SELFTEST_ONLY:'true',PILOT_SELFTEST_USER_ID:UID_A,PILOT_SELFTEST_EXPIRES_AT:new Date(Date.now()+60000).toISOString()};
+  const t=setup({envOverride:options});
+  const other=await t.call('tokB');assert.equal(other.status,403);assert.equal((await other.json()).error,'selftest_only');
+  assert.equal(t.counter.n,0);assert.equal(t.calls.length,1);
+  assert.equal((await t.call('tokA')).status,200);assert.equal(t.counter.n,1);
+  const inactive=setup({users:{tokA:{id:UID_A,active:false}},envOverride:options});
+  assert.equal((await inactive.call('tokA')).status,403);assert.equal(inactive.counter.n,0);
+});
+
+test('본인 시험의 Secret 누락·잘못된 기한·종료 후 요청은 upstream 호출 전에 거절한다', async () => {
+  for(const override of [
+    {PILOT_SELFTEST_ONLY:'true'},
+    {PILOT_SELFTEST_ONLY:'invalid'},
+    {PILOT_SELFTEST_ONLY:'true',PILOT_SELFTEST_USER_ID:'invalid',PILOT_SELFTEST_EXPIRES_AT:new Date(Date.now()+60000).toISOString()},
+    {PILOT_SELFTEST_ONLY:'true',PILOT_SELFTEST_USER_ID:UID_A,PILOT_SELFTEST_EXPIRES_AT:'invalid'},
+    {PILOT_SELFTEST_ONLY:'true',PILOT_SELFTEST_USER_ID:UID_A,PILOT_SELFTEST_EXPIRES_AT:new Date(Date.now()-1).toISOString()}
+  ]){
+    const t=setup({envOverride:override}), response=await t.call('tokA');
+    assert.equal(response.status,503);assert.equal(t.counter.n,0);assert.equal(t.calls.length,0);
+  }
+  assert.deepEqual(selfTestSettings({}),{enabled:false});
+});
+
+test('본인 시험도 기존 호출 한도를 우회하지 않는다',async()=>{
+  const t=setup({envOverride:{PILOT_SELFTEST_ONLY:'true',PILOT_SELFTEST_USER_ID:UID_A,PILOT_SELFTEST_EXPIRES_AT:new Date(Date.now()+60000).toISOString(),PILOT_USER_DAILY_LIMIT:'1',PILOT_GLOBAL_DAILY_LIMIT:'1'}});
+  assert.equal((await t.call('tokA')).status,200);assert.equal((await t.call('tokA')).status,429);assert.equal(t.counter.n,1);
+});
 
 test('피드백은 기본 비활성이고 저장된 본인 제출이 없으면 공급자를 호출하지 않는다',async()=>{
  const body=JSON.stringify({article:'자체 작성 가상 글',sessionId:UID_A});

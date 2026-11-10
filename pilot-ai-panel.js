@@ -10,7 +10,9 @@ function pilotAiClear() {
   pilotAiEl('ai-result').hidden = true;
 }
 function pilotAiEnable() {
+  // @development-start
   pilotAiEl('ai-recommend').disabled = false;
+  // @development-end
   pilotAiEl('article-ai-preview').value = articleSession?.fallback ? '' : (articleSession?.text || '');
   pilotAiEl('article-ai-consent').checked = false;
   pilotAiEl('article-ai-recommend').disabled = !SubmissionConfig.articleTestEnabled || !!articleSession?.fallback;
@@ -19,9 +21,13 @@ function pilotAiEnable() {
 }
 function resetPilotAi() {
   pilotAiClear();
+  // @development-start
   pilotAiEl('ai-recommend').disabled = true;
+  // @development-end
   pilotAiEl('ai-password').value = '';
+  // @development-start
   pilotAiEl('ai-status').textContent = '';
+  // @development-end
   pilotAiEl('article-ai-preview').value = '';
   pilotAiEl('article-ai-consent').checked = false;
   pilotAiEl('article-ai-recommend').disabled = true;
@@ -30,8 +36,12 @@ function resetPilotAi() {
 function pilotAiStartReading() {
   pilotAiClear();
   pilotAiEl('ai-password').value = '';
+  // @development-start
   pilotAiEl('ai-recommend').disabled = true;
+  // @development-end
+  // @development-start
   pilotAiEl('ai-status').textContent = '읽기 시작 후에는 AI 추천을 요청할 수 없습니다.';
+  // @development-end
   pilotAiEl('article-ai-preview').value = '';
   pilotAiEl('article-ai-consent').checked = false;
   pilotAiEl('article-ai-recommend').disabled = true;
@@ -66,6 +76,7 @@ pilotAiEl('article-ai-recommend').addEventListener('click', async () => {
     globalThis.PanelUI?.tone(status,'error');
   } finally { if (allowLocalRepeatedRecommendations && recommendationGate.canRequest() && articleSession && !articleSession.fallback) button.disabled = false; }
 });
+// @development-start
 pilotAiEl('ai-recommend').addEventListener('click', async () => {
   const button = pilotAiEl('ai-recommend');
   const status = pilotAiEl('ai-status');
@@ -92,3 +103,5 @@ pilotAiEl('ai-recommend').addEventListener('click', async () => {
     globalThis.PanelUI?.tone(status,'error');
   } finally { if (allowLocalRepeatedRecommendations && recommendationGate.canRequest() && articleSession) button.disabled = false; }
 });
+
+// @development-end

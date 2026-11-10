@@ -8,10 +8,16 @@
   <script src="panel-ui.js" defer></script>
   <script src="worksheet.js" defer></script>
   <script src="ai-client.js" defer></script>
+  <!-- @development-start -->
   <script src="local-preview.js" defer></script>
+  <!-- @development-end -->
+  <!-- @development-start -->
   <script src="local-preview-ui.js" defer></script>
+  <!-- @development-end -->
   <script src="submission-client.js" defer></script>
+  <!-- @development-start -->
   <script src="submission-demo.js" defer></script>
+  <!-- @development-end -->
   <script src="record-contract.js" defer></script>
   <script src="record-client.js" defer></script>
   <script src="submission-contract.js" defer></script>
@@ -19,7 +25,9 @@
   <script src="submission-auth.js" defer></script>
   <script src="submission-flow.js" defer></script>
   <script src="submission-config.js" defer></script>
+  <!-- @development-start -->
   <script src="submission-config.local.js" defer></script>
+  <!-- @development-end -->
   <script src="sidepanel.js" defer></script>
   <script src="submission-panel.js" defer></script>
   <script src="pilot-ai-panel.js" defer></script>
@@ -89,6 +97,7 @@
       </div>
     </div>
 
+    <!-- @development-start -->
     <details id="dev-tools-preparation" class="dev-only" hidden inert>
       <summary>개발자 도구 (로컬 AI 엔드포인트에서만 표시)</summary>
       <section aria-labelledby="local-preview-heading">
@@ -115,6 +124,7 @@
         <p id="mock-status" role="status"></p>
       </section>
     </details>
+    <!-- @development-end -->
   </section>
 
   <section id="reading" aria-labelledby="step2" hidden>
@@ -167,12 +177,14 @@
       <button id="submission-send" type="button" class="primary" aria-describedby="submission-status">제출</button>
       <p id="submission-status" role="status" aria-live="polite"></p>
     </section>
+    <!-- @development-start -->
     <details id="dev-tools-review" class="dev-only" hidden inert>
       <summary>개발자 도구 (로컬 AI 엔드포인트에서만 표시)</summary>
       <p>아래는 별도의 고정 합성 예시만 사용하는 메모리 모의 검사입니다. 실제 작성 내용은 제출·저장하지 않습니다.</p>
       <button id="synthetic-submit" type="button">합성 예시 모의 저장·재조회</button>
       <p id="synthetic-submit-status" role="status" aria-live="polite"></p>
     </details>
+    <!-- @development-end -->
   </section>
 
   <section id="feedback-section" hidden aria-labelledby="feedback-heading">

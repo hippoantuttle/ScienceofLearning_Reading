@@ -8,10 +8,13 @@ let articleSession = null; // In-memory only; bind future actions to this tab an
 let blindPort = null;
 let rechecked = false;
 let operationBusy = false;
-const allowLocalRepeatedRecommendations = (() => {
+let allowLocalRepeatedRecommendations = false;
+// @development-start
+allowLocalRepeatedRecommendations = (() => {
   try { return SubmissionConfig.allowRepeatedRecommendations === true && AIContract.isLoopbackEndpoint(SubmissionConfig.aiEndpoint); }
   catch { return false; }
 })();
+// @development-end
 const recommendationGate = AIContract.createGate({allowRepeatedRequests:allowLocalRepeatedRecommendations});
 
 function showStatus(message, isError = false, target = statusElement) {
@@ -52,11 +55,13 @@ analyzeButton.addEventListener('click', async () => {
   if (typeof resetPanelSubmission === 'function') resetPanelSubmission();
   if (typeof resetPilotAi === 'function') resetPilotAi();
   if (typeof localPreviewReset === 'function') localPreviewReset();
+  // @development-start
   document.getElementById('mock-result').textContent = '';
   document.getElementById('mock-result').hidden = true;
   document.getElementById('mock-status').textContent = '';
   document.getElementById('mock-token').value = '';
   document.getElementById('mock-recommend').disabled = true;
+  // @development-end
   if (articleSession) document.getElementById('prior').value = '';
   const articleConsent=document.getElementById('submission-article-consent');if(articleConsent)articleConsent.checked=false;
   for(const id of ['submission-article-title','submission-source-url']){const el=document.getElementById(id);if(el)el.value='';}
@@ -95,7 +100,9 @@ analyzeButton.addEventListener('click', async () => {
     document.getElementById('counts').textContent = `문자 수: ${response.charCount} · 단어 수(공백 기준): ${response.wordCount}`;
     document.getElementById('fallback').textContent = response.fallback ? '주의: 기사 영역을 찾지 못해 페이지 전체 텍스트를 사용했습니다.' : '';
     resultElement.hidden = false;
+    // @development-start
     document.getElementById('mock-recommend').disabled = false;
+    // @development-end
     if (typeof pilotAiEnable === 'function') pilotAiEnable();
     showStatus('', false, document.getElementById('connect-status'));
     showStatus('본문을 연결했습니다. 원문을 직접 읽고 정리하세요.');
@@ -116,6 +123,7 @@ function updateStructureLabels() {
   document.getElementById('support-label').textContent = '보조 정보 · '+support;
 }
 
+// @development-start
 document.getElementById('mock-recommend').addEventListener('click', async () => {
   const button = document.getElementById('mock-recommend');
   const tokenField = document.getElementById('mock-token');
@@ -140,6 +148,7 @@ document.getElementById('mock-recommend').addEventListener('click', async () => 
   }
 });
 
+// @development-end
 document.getElementById('structure').addEventListener('change', updateStructureLabels);
 document.getElementById('back').addEventListener('click', () => {
   document.getElementById('reading').hidden = true;
@@ -156,11 +165,13 @@ document.getElementById('start-reading').addEventListener('click', async () => {
     recommendationGate.startReading();
     if (typeof localPreviewStartReading === 'function') localPreviewStartReading();
     if (typeof pilotAiStartReading === 'function') pilotAiStartReading();
+    // @development-start
     document.getElementById('mock-token').value = '';
     document.getElementById('mock-recommend').disabled = true;
     document.getElementById('mock-result').hidden = true;
     document.getElementById('mock-result').textContent = '';
     document.getElementById('mock-status').textContent = '읽기 시작 후에는 추천을 요청할 수 없습니다.';
+    // @development-end
     document.getElementById('preparation').hidden = true;
     document.getElementById('reading').hidden = false;
     document.getElementById('main-idea').focus();
@@ -267,8 +278,11 @@ document.getElementById('end-training').addEventListener('click',async () => {
   for(const id of ['prior','main-idea','primary','support','relation','retell-input','reflection','new-words','interests','submission-article-title','submission-source-url','mock-token']){const el=document.getElementById(id);if(el)el.value='';}
   for(const id of ['submission-consent','submission-article-consent']){const el=document.getElementById(id);if(el)el.checked=false;}
   for(const id of ['retell-error','retell-status','revisit-note','connect-status','reading-start-status','counts','fallback','mock-status','mock-result','summary-main','summary-type','summary-primary','summary-support','summary-relation','summary-retell']){const el=document.getElementById(id);if(el)el.textContent='';}
-  for(const id of ['retell-view','review-view','reading','article-result','mock-result'])document.getElementById(id).hidden=true;
-  document.getElementById('preparation').hidden=false;document.getElementById('mock-recommend').disabled=true;
+  for(const id of ['retell-view','review-view','reading','article-result','mock-result']){const el=document.getElementById(id);if(el)el.hidden=true;}
+  document.getElementById('preparation').hidden=false;
+  // @development-start
+  document.getElementById('mock-recommend').disabled=true;
+  // @development-end
   updateStructureLabels();showStatus('훈련을 종료했습니다. 미저장 내용을 지웠습니다. 새 글을 연결하세요.');analyzeButton.focus();
 });
 async function interruptRetell(message) {

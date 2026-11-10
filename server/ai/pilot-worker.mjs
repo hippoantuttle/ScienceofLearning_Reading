@@ -23,6 +23,17 @@ export function limitsFrom(env) {
   return user && global ? { user, global } : null;
 }
 
+// Optional single-person trial. Account ID remains a server Secret, never a
+// client setting. Invalid configuration fails closed before upstream access.
+export function selfTestSettings(env) {
+  if (env.PILOT_SELFTEST_ONLY === undefined || env.PILOT_SELFTEST_ONLY === 'false') return {enabled:false};
+  if (env.PILOT_SELFTEST_ONLY !== 'true' ||
+      !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(env.PILOT_SELFTEST_USER_ID || '')) return null;
+  const deadline = Date.parse(env.PILOT_SELFTEST_EXPIRES_AT);
+  if (!Number.isFinite(deadline) || new Date(deadline).toISOString() !== env.PILOT_SELFTEST_EXPIRES_AT) return null;
+  return {enabled:true, userId:env.PILOT_SELFTEST_USER_ID, deadline};
+}
+
 function supabaseConfig(env) {
   try {
     const url = new URL(env.SUPABASE_URL);
@@ -99,6 +110,9 @@ export function createPilotWorker({ fetchImpl = fetch, providerFetch = fetch } =
       if (env.PILOT_AI_ENABLED !== 'true') return reply(503, { error: 'disabled' });
       if (articleMode && env.PILOT_ARTICLE_ENABLED !== 'true') return reply(503, { error: 'disabled' });
       if (feedbackMode && env.PILOT_FEEDBACK_ENABLED !== 'true') return reply(503, { error: 'disabled' });
+      const selfTest = selfTestSettings(env);
+      if (!selfTest) return reply(503, {error:'configuration'});
+      if (selfTest.enabled && Date.now() >= selfTest.deadline) return reply(503, {error:'selftest_expired'});
       const cfg = supabaseConfig(env);
       if (!cfg || typeof env.DEEPSEEK_API_KEY !== 'string' || !env.DEEPSEEK_API_KEY.trim() || !limitsFrom(env)) return reply(503, { error: 'configuration' });
 
@@ -122,6 +136,7 @@ export function createPilotWorker({ fetchImpl = fetch, providerFetch = fetch } =
         const user = await identity.json();
         if (typeof user?.id !== 'string' || !user.id) return reply(401, { error: 'unauthorized' });
         userId = user.id;
+        if (selfTest.enabled && userId !== selfTest.userId) return reply(403, {error:'selftest_only'});
         const member = await fetchImpl(cfg.base + '/rest/v1/rpc/is_active_pilot_member', {
           method: 'POST', headers: { ...upstream, 'Content-Type': 'application/json' }, body: '{}', redirect: 'manual'
         });
@@ -143,6 +158,7 @@ export function createPilotWorker({ fetchImpl = fetch, providerFetch = fetch } =
         } catch { return fail('submission',503,'submission_unavailable'); }
       }
 
+      if (selfTest.enabled && Date.now() >= selfTest.deadline) return reply(503, {error:'selftest_expired'});
       try {
         const stub = env.PILOT_BUDGET.get(env.PILOT_BUDGET.idFromName('pilot'));
         const reservation = await stub.fetch(new Request('https://budget.internal/', { method: 'POST', headers: { 'X-User-Id': userId } }));

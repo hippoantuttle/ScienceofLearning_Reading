@@ -25,6 +25,7 @@ const AIContract = (() => {
       canRequest() { return !reading && !pending && (!used || allowRepeatedRequests); }
     };
   }
+  // @development-start
   async function requestMock(token, {fetchImpl = fetch, timeoutMs = 5000} = {}) {
     if (typeof token !== 'string' || !token) throw new Error('테스트 토큰을 입력하세요.');
     const controller = new AbortController(); let timedOut = false;
@@ -38,6 +39,7 @@ const AIContract = (() => {
     } catch (error) { if (timedOut) throw new Error('로컬 테스트 서버 응답 시간이 초과되었습니다.'); throw error; }
     finally { clearTimeout(timer); }
   }
+  // @development-end
   // 서버가 돌려주는 안전한 오류 코드만 사용자 문구로 바꾼다. 알 수 없는 코드는 상태 코드 기준 일반 문구를 쓴다.
   const PILOT_MESSAGES = {
     inactive: 'AI 추천을 사용할 수 없는 계정입니다.',
@@ -46,6 +48,8 @@ const AIContract = (() => {
     limit: '오늘 AI 추천 사용 한도에 도달했습니다.',
     disabled: 'AI 추천이 현재 꺼져 있습니다.',
     configuration: 'AI 추천 서버 설정이 완료되지 않았습니다.',
+    selftest_only: '본인 시험용으로 지정된 계정만 AI를 사용할 수 있습니다.',
+    selftest_expired: '본인 시험 시간이 종료되었습니다. 자료 없이 계속할 수 있습니다.',
     auth_unreachable: 'AI 추천 서버가 로그인 확인 서비스에 연결하지 못했습니다.',
     membership_unavailable: '회원 확인 서비스를 사용할 수 없습니다.',
     budget_unavailable: 'AI 추천 사용량 확인에 실패했습니다.',
@@ -81,6 +85,10 @@ const AIContract = (() => {
     try { const url = new URL(endpoint); return url.protocol === 'http:' && ['127.0.0.1','localhost','[::1]'].includes(url.hostname); }
     catch { return false; }
   }
-  return {validate, createGate, requestMock, requestPilot, isLoopbackEndpoint, pilotMessages: Object.values(PILOT_MESSAGES)};
+  const contract = {validate, createGate, requestPilot, isLoopbackEndpoint, pilotMessages: Object.values(PILOT_MESSAGES)};
+  // @development-start
+  contract.requestMock = requestMock;
+  // @development-end
+  return contract;
 })();
 if (typeof module !== 'undefined') module.exports = AIContract;

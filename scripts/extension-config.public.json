@@ -4,5 +4,6 @@
   "endpoint": "https://reading-submissions-pilot.patrick020308.workers.dev/submissions",
   "aiEndpoint": "https://reading-ai-pilot.patrick020308.workers.dev/recommend",
   "articleTestEnabled": false,
-  "feedbackTestEnabled": false
+  "feedbackTestEnabled": false,
+  "googleLoginEnabled": false
 }

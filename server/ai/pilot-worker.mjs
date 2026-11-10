@@ -6,6 +6,7 @@
 //   켜져야 하며 UI 동의·제공자 조건 검토 전에는 활성화하지 않는다.
 import { callProvider } from './worker.mjs';
 import { callFeedback } from './feedback.mjs';
+import {cohortSettings,cohortAccess} from '../pilot-access.mjs';
 
 const DEFAULT_USER_DAILY_LIMIT = 5;
 const DEFAULT_GLOBAL_DAILY_LIMIT = 100;
@@ -113,6 +114,9 @@ export function createPilotWorker({ fetchImpl = fetch, providerFetch = fetch } =
       const selfTest = selfTestSettings(env);
       if (!selfTest) return reply(503, {error:'configuration'});
       if (selfTest.enabled && Date.now() >= selfTest.deadline) return reply(503, {error:'selftest_expired'});
+      const cohort=cohortSettings(env);
+      if(!cohort)return reply(503,{error:'configuration'});
+      if(cohort.enabled&&Date.now()>=cohort.deadline)return reply(403,{error:'cohort_expired'});
       const cfg = supabaseConfig(env);
       if (!cfg || typeof env.DEEPSEEK_API_KEY !== 'string' || !env.DEEPSEEK_API_KEY.trim() || !limitsFrom(env)) return reply(503, { error: 'configuration' });
 
@@ -142,6 +146,8 @@ export function createPilotWorker({ fetchImpl = fetch, providerFetch = fetch } =
         });
         if (!member.ok) return reply(503, { error: 'membership_unavailable' });
         if ((await member.json()) !== true) return reply(403, { error: 'inactive' });
+        const denied=await cohortAccess({settings:cohort,base:cfg.base,headers:upstream,fetchImpl});
+        if(denied)return reply(denied.status,{error:denied.code});
       } catch (error) { return fail('auth', 503, 'auth_unreachable', error); }
 
       let submission;
@@ -159,8 +165,9 @@ export function createPilotWorker({ fetchImpl = fetch, providerFetch = fetch } =
       }
 
       if (selfTest.enabled && Date.now() >= selfTest.deadline) return reply(503, {error:'selftest_expired'});
+      if(cohort.enabled&&Date.now()>=cohort.deadline)return reply(403,{error:'cohort_expired'});
       try {
-        const stub = env.PILOT_BUDGET.get(env.PILOT_BUDGET.idFromName('pilot'));
+        const stub = env.PILOT_BUDGET.get(env.PILOT_BUDGET.idFromName(cohort.enabled?'cohort:'+cohort.id:'pilot'));
         const reservation = await stub.fetch(new Request('https://budget.internal/', { method: 'POST', headers: { 'X-User-Id': userId } }));
         if (reservation.status === 429) return reply(429, { error: 'limit' });
         if (!reservation.ok) return fail('budget', 503, 'budget_unavailable', new Error('status ' + reservation.status));

@@ -1,5 +1,9 @@
 'use strict';
 const SubmissionHttp=(()=>{
+ function responseError(stage,status){
+  const error=new Error(status===401?'로그인이 만료되었습니다. 상단에서 같은 계정으로 다시 로그인하세요.':`${stage} (${status})`);
+  error.status=status;return error;
+ }
  function createHttpAdapter({endpoint,getToken,fetchImpl=fetch}){
   let url;try{url=new URL(endpoint)}catch{throw new Error('중계 주소 오류')}
   if(url.protocol!=='https:'||url.username||url.password||url.hash||url.search)throw new Error('HTTPS 중계 주소가 필요합니다.');
@@ -8,7 +12,7 @@ const SubmissionHttp=(()=>{
    const token=await getToken();if(typeof token!=='string'||!token.trim())throw new Error('로그인이 필요합니다.');
    if(typeof key!=='string'||!key.trim())throw new Error('요청 식별자 오류');
    const response=await fetchImpl(url.href,{method:'POST',headers:{'Content-Type':'application/json','Authorization':`Bearer ${token}`,'Idempotency-Key':key},body:JSON.stringify(payload),redirect:'error',cache:'no-store',credentials:'omit'});
-   if(!response.ok)throw new Error(`저장 요청 실패 (${response.status})`);
+   if(!response.ok)throw responseError('저장 요청 실패',response.status);
    return response.json();
   },async checkMember(){
    const token=await getToken();if(typeof token!=='string'||!token.trim())throw new Error('로그인이 필요합니다.');
@@ -19,7 +23,7 @@ const SubmissionHttp=(()=>{
    if(typeof key!=='string'||!key.trim())throw new Error('요청 식별자 오류');
    const target=new URL(url.href);target.searchParams.set('sessionId',key);
    const response=await fetchImpl(target.href,{method:'GET',headers:{'Authorization':`Bearer ${token}`},redirect:'error',cache:'no-store',credentials:'omit'});
-   if(!response.ok)throw new Error(`재조회 실패 (${response.status})`);return response.json();
+   if(!response.ok)throw responseError('재조회 실패',response.status);return response.json();
   }};
  }
  // 멤버십 확인: Chrome은 확장 페이지의 GET에 Origin을 붙이지 않아 제출 Worker의 GET 확인이 막히므로,

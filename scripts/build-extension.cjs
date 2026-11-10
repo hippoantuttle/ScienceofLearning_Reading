@@ -10,7 +10,7 @@ const RUNTIME = Object.freeze([
   'background.js', 'content.js', 'sidepanel.html', 'sidepanel.css',
   'panel-ui.js', 'worksheet.js', 'ai-client.js', 'submission-client.js',
   'record-contract.js', 'record-client.js', 'submission-contract.js',
-  'submission-http.js', 'submission-auth.js', 'submission-flow.js',
+  'submission-http.js', 'submission-auth.js', 'google-auth.js', 'submission-flow.js',
   'sidepanel.js', 'submission-panel.js', 'pilot-ai-panel.js',
   'feedback-panel.js', 'records-panel.js', 'account-bar.js', 'panel-shell.js'
 ]);
@@ -28,8 +28,8 @@ function publicUrl(value, field, pathname) {
 }
 
 function validateConfig(input) {
-  if (!input || Array.isArray(input) || Object.keys(input).sort().join() !== [...CONFIG_KEYS].sort().join())
-    throw Error('공개 설정은 지정된 여섯 필드만 허용합니다.');
+  if (!input || Array.isArray(input) || Object.keys(input).filter(key=>key!=='googleLoginEnabled').sort().join() !== [...CONFIG_KEYS].sort().join() || ('googleLoginEnabled' in input&&typeof input.googleLoginEnabled!=='boolean'))
+    throw Error('공개 설정은 지정된 필드와 선택적 Google 로그인 스위치만 허용합니다.');
   if (CONFIG_KEYS.slice(0, 4).some(key => typeof input[key] !== 'string')) throw Error('공개 키와 주소는 문자열이어야 합니다.');
   const auth = publicUrl(input.authUrl, 'authUrl', '/');
   const submission = publicUrl(input.endpoint, 'endpoint', '/submissions');
@@ -51,7 +51,7 @@ function validateConfig(input) {
     } catch { isPublic = false; }
   }
   if (!isPublic) throw Error('publishable 또는 해당 프로젝트의 legacy anon 공개 키만 허용합니다.');
-  return Object.fromEntries(CONFIG_KEYS.map(key => [key, input[key]]));
+  return {...Object.fromEntries(CONFIG_KEYS.map(key => [key, input[key]])),...('googleLoginEnabled' in input?{googleLoginEnabled:input.googleLoginEnabled}:{})};
 }
 
 // Explicit, balanced regions keep the development source testable. No minifier or
@@ -134,7 +134,7 @@ function assemble({root = ROOT, config, reviewOnly = false} = {}) {
   const releaseManifest = {
     manifest_version:3, key:manifest.key, name:'한국어 독해 훈련' + (reviewOnly ? ' · 검토 전용' : ''),
     version:manifest.version, minimum_chrome_version:'116', description:'스스로 읽고 구조화하고 다시 말하는 독해 훈련',
-    permissions:['sidePanel', 'activeTab', 'scripting'],
+    permissions:['sidePanel', 'activeTab', 'scripting',...(settings.googleLoginEnabled?['identity']:[])],
     host_permissions:reviewOnly ? [] : [...new Set([settings.authUrl, settings.endpoint, settings.aiEndpoint].filter(Boolean).map(url => new URL(url).origin + '/*'))],
     background:{service_worker:'background.js'}, action:{default_title:'독해 훈련 사이드 패널 열기'},
     side_panel:{default_path:'sidepanel.html'}

@@ -3,7 +3,7 @@
 const fs=require('node:fs'),path=require('node:path'),crypto=require('node:crypto');
 const {validateConfig,extensionId}=require('./build-extension.cjs');
 const ROOT=path.resolve(__dirname,'..');
-const SOURCES=['server/ai/pilot-worker.mjs','server/ai/worker.mjs','server/ai/feedback.mjs','server/ai/prompts/pre-reading-v2.mjs'];
+const SOURCES=['server/ai/pilot-worker.mjs','server/ai/worker.mjs','server/ai/feedback.mjs','server/ai/prompts/pre-reading-v2.mjs','server/pilot-access.mjs'];
 const AI='https://reading-ai-pilot.patrick020308.workers.dev/recommend';
 const REQUIRED_SECRETS=['DEEPSEEK_API_KEY','SUPABASE_PUBLISHABLE_KEY','PILOT_SELFTEST_USER_ID'];
 const sha=data=>crypto.createHash('sha256').update(data).digest('hex');

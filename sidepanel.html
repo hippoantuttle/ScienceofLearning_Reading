@@ -23,6 +23,7 @@
   <script src="submission-contract.js" defer></script>
   <script src="submission-http.js" defer></script>
   <script src="submission-auth.js" defer></script>
+  <script src="google-auth.js" defer></script>
   <script src="submission-flow.js" defer></script>
   <script src="submission-config.js" defer></script>
   <!-- @development-start -->
@@ -51,6 +52,10 @@
         <label for="ai-password">비밀번호</label><input id="ai-password" type="password" autocomplete="current-password">
         <button id="ai-login" type="submit" aria-describedby="account-status">로그인</button>
       </form>
+      <div id="account-google" hidden>
+        <p class="hint">사전 등록한 Google 계정으로 로그인하세요. 메일 내용은 읽지 않습니다.</p>
+        <button id="account-google-login" type="button" aria-describedby="account-status">Google 계정으로 로그인</button>
+      </div>
       <p id="account-status" role="status" aria-live="polite"></p>
     </section>
   </header>

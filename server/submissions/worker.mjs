@@ -1,5 +1,6 @@
 import contract from '../../record-contract.js';
 import {handleRecords, original} from './records.mjs';
+import {cohortSettings,cohortAccess} from '../pilot-access.mjs';
 const map={schemaVersion:'schema_version',sessionId:'session_id',structureType:'structure_type',mainIdea:'main_idea',primary:'primary_text',support:'support_text',relation:'relation_text',retell:'retell',reflection:'reflection',newWords:'new_words',interests:'interests',rechecked:'rechecked'};
 const textFields=['mainIdea','primary','support','relation','retell','reflection','newWords','interests'];
 const required=['mainIdea','primary','support','relation','retell'];
@@ -22,6 +23,12 @@ export function createHandler(fetchImpl=fetch){return async(req,env)=>{
   if(!identity.ok)return reply(401,{error:'unauthorized'});const user=await identity.json();if(typeof user?.id!=='string'||!user.id)return reply(401,{error:'unauthorized'});
   const member=await fetchImpl(base+'/rest/v1/rpc/is_active_pilot_member',{method:'POST',headers:{...upstreamHeaders,'Content-Type':'application/json'},body:'{}',redirect:'manual'});
   if(!member.ok)return reply(503,{error:'membership_unavailable'});if(await member.json()!==true)return reply(403,{error:'inactive'});
+  const cohort=cohortSettings(env);
+  if(!cohort)return reply(503,{error:'configuration'});
+  if(req.method==='POST'){
+   const denied=await cohortAccess({settings:cohort,base,headers:upstreamHeaders,fetchImpl});
+   if(denied)return reply(denied.status,{error:denied.code});
+  }
   if(req.method==='GET'){const query=new URL(req.url).searchParams;if(query.size===1&&query.get('membership')==='1')return reply(200,{active:true});}
   const recordResponse=await handleRecords(req,{base,upstreamHeaders,user,fetchImpl,reply});if(recordResponse)return recordResponse;
   if(new URL(req.url).pathname!=='/submissions')return reply(404,{error:'not_found'});

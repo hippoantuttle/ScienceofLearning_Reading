@@ -36,7 +36,7 @@ test('모의 DOM에서 패널 이벤트 핸들러가 유형 전환·뒤로 가�
  assert.equal(elements.reading.hidden,false);
  for(const [id,value] of Object.entries({'main-idea':'내 생각',primary:'정보 하나',support:'정보 둘',relation:'연결'})) elements[id].value=value;
  elements.structure.value='cause';elements.structure.handlers.change();
- assert.equal(elements['primary-label'].textContent,'원인');
+ assert.equal(elements['primary-label'].textContent,'핵심 정보 · 원인');
  assert.equal(elements.primary.value,'정보 하나');
  elements.back.handlers.click();
  assert.equal(elements.preparation.hidden,false);

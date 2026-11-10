@@ -19,12 +19,13 @@ accountEl('account-form').addEventListener('submit', async (event) => {
   if (button.disabled) return;
   button.disabled = true;
   status.textContent = '로그인하고 있습니다.';
+  globalThis.PanelUI?.tone(status,'warning');
   try {
     await panelFlow().signIn(accountEl('ai-email').value, password.value);
     status.textContent = '';
     accountRender();
     if(typeof recordsVisible==='function'&&recordsVisible()){resetRecordsPanel();await recordsLoad();}
-  } catch (error) { status.textContent = error?.message || '로그인하지 못했습니다.'; }
+  } catch (error) { status.textContent = error?.message || '로그인하지 못했습니다.';globalThis.PanelUI?.tone(status,'error'); }
   finally { password.value = ''; button.disabled = false; }
 });
 accountEl('account-logout').addEventListener('click', () => {
@@ -37,6 +38,7 @@ accountEl('account-logout').addEventListener('click', () => {
   }
   panelSignOut();
   accountEl('account-status').textContent = '로그아웃했습니다.';
+  globalThis.PanelUI?.tone(accountEl('account-status'),'success');
   accountRender();
   accountEl('ai-email').focus?.();
 });

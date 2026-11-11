@@ -15,11 +15,18 @@ function pilotAiEnable() {
   // @development-end
   // TASK-019 v2: PDF 읽기는 AI 추천 없이 진행한다(본문 미리보기·전송도 하지 않음).
   const pdf = articleSession?.kind === 'pdf';
-  pilotAiEl('article-ai-preview').value = articleSession?.fallback || pdf ? '' : (articleSession?.text || '');
-  pilotAiEl('article-ai-consent').checked = false;
-  pilotAiEl('article-ai-recommend').disabled = !SubmissionConfig.articleTestEnabled || !!articleSession?.fallback || pdf;
-  pilotAiEl('article-ai-status').textContent = pdf ? 'PDF 읽기에서는 AI 추천을 사용하지 않습니다.' : articleSession?.fallback ? '본문 영역을 식별하지 못해 실제 글 전송을 차단했습니다.' : (!SubmissionConfig.articleTestEnabled ? '실제 글 추천은 아직 준비 중입니다.' : '전송할 본문을 확인하세요.');
-  globalThis.PanelUI?.tone(pilotAiEl('article-ai-status'),'warning');
+  // TASK-021: 쓸 수 없는 상태(PDF·본문 인식 실패·기능 꺼짐)면 카드 자체를 숨긴다. 버튼 클릭이 전송 동의다.
+  const available = !!SubmissionConfig.articleTestEnabled && !!articleSession && !articleSession.fallback && !pdf;
+  pilotAiEl('article-ai-preview').value = available ? (articleSession?.text || '') : '';
+  pilotAiEl('article-ai-recommend').disabled = !available;
+  pilotAiEl('article-ai-status').textContent = '';
+  pilotAiSetCard(available);
+}
+function pilotAiSetCard(visible) {
+  const card = pilotAiEl('article-ai-card');
+  if (!card) return;
+  card.hidden = !visible;
+  if (!visible) card.open = false;
 }
 function resetPilotAi() {
   pilotAiClear();
@@ -31,7 +38,7 @@ function resetPilotAi() {
   pilotAiEl('ai-status').textContent = '';
   // @development-end
   pilotAiEl('article-ai-preview').value = '';
-  pilotAiEl('article-ai-consent').checked = false;
+  pilotAiSetCard(false);
   pilotAiEl('article-ai-recommend').disabled = true;
   pilotAiEl('article-ai-status').textContent = '';
 }
@@ -45,7 +52,7 @@ function pilotAiStartReading() {
   pilotAiEl('ai-status').textContent = '읽기 시작 후에는 AI 추천을 요청할 수 없습니다.';
   // @development-end
   pilotAiEl('article-ai-preview').value = '';
-  pilotAiEl('article-ai-consent').checked = false;
+  pilotAiSetCard(false);
   pilotAiEl('article-ai-recommend').disabled = true;
 }
 pilotAiEl('article-ai-recommend').addEventListener('click', async () => {
@@ -54,26 +61,25 @@ pilotAiEl('article-ai-recommend').addEventListener('click', async () => {
   if (button.disabled) return;
   try {
     if (!SubmissionConfig.articleTestEnabled || !articleSession || articleSession.fallback || articleSession.kind === 'pdf') throw new Error('실제 글 추천을 사용할 수 없습니다.');
-    if (!pilotAiEl('article-ai-consent').checked) throw new Error('전송할 본문 확인과 동의가 필요합니다.');
     const session = articleSession;
     const article = session.text;
     if (pilotAiEl('article-ai-preview').value !== article) throw new Error('전송할 본문을 다시 확인하세요.');
     const token = panelFlow().getToken();
-    if (!token) throw new Error('먼저 로그인하세요.');
+    if (!token) { if (typeof accountOpenLogin === 'function') accountOpenLogin('AI 추천을 받으려면 로그인하세요.'); throw new Error('먼저 로그인하세요.'); }
     await validateBoundTab();
-    if (articleSession !== session || !pilotAiEl('article-ai-consent').checked || pilotAiEl('article-ai-preview').value !== article) throw new Error('전송할 본문을 다시 확인하세요.');
+    if (articleSession !== session || pilotAiEl('article-ai-preview').value !== article) throw new Error('전송할 본문을 다시 확인하세요.');
     button.disabled = true;
-    status.textContent = 'AI 추천을 요청하고 있습니다.';
+    status.textContent = 'AI 추천을 요청하고 있습니다. 최대 1분쯤 걸릴 수 있습니다.';
     globalThis.PanelUI?.tone(status,'warning');
     const data = await recommendationGate.request(() => AIContract.requestPilot(token, SubmissionConfig.aiEndpoint, {article}));
     if (!data) return;
     const result = pilotAiEl('ai-result');
     result.textContent = `실제 글 기반 추천\n${data.terms.map(item => `${item.term}: ${item.definition}`).join('\n')}\n${data.background.join('\n')}\n구조도 유형: ${PILOT_AI_TYPE_LABEL[data.structureType]} (참고용, 직접 선택)`;
     result.hidden = false;
-    status.textContent = '추천 결과가 아래에 표시됐습니다. 참고용이며 자동으로 입력되지 않습니다.';
+    status.textContent = '추천을 아래에 표시했습니다. 참고용이며 답안에 자동으로 들어가지 않습니다.';
     globalThis.PanelUI?.tone(status,'success');
   } catch (error) {
-    const safe = [...PILOT_AI_SAFE_ERRORS, '실제 글 추천을 사용할 수 없습니다.', '전송할 본문 확인과 동의가 필요합니다.', '전송할 본문을 다시 확인하세요.', '먼저 로그인하세요.', '글 본문을 확인하세요.', '추천은 읽기 전 한 번만 요청할 수 있습니다.'];
+    const safe = [...PILOT_AI_SAFE_ERRORS, '실제 글 추천을 사용할 수 없습니다.', '전송할 본문을 다시 확인하세요.', '먼저 로그인하세요.', '글 본문을 확인하세요.', '추천은 읽기 전 한 번만 요청할 수 있습니다.'];
     status.textContent = safe.includes(error?.message) ? error.message : 'AI 추천 요청을 완료하지 못했습니다.';
     globalThis.PanelUI?.tone(status,'error');
   } finally { if (allowLocalRepeatedRecommendations && recommendationGate.canRequest() && articleSession && !articleSession.fallback && articleSession.kind !== 'pdf') button.disabled = false; }

@@ -4,23 +4,24 @@ let feedbackState=null, feedbackGeneration=0;
 const feedbackEl=id=>document.getElementById(id);
 function resetFeedbackPanel(){
   feedbackGeneration++; feedbackState=null;
-  feedbackEl('feedback-section').hidden=true; feedbackEl('feedback-article').value=''; feedbackEl('feedback-consent').checked=false;
+  feedbackEl('feedback-section').hidden=true; feedbackEl('feedback-article').value=''; feedbackSetCard(false);
   feedbackEl('feedback-request').disabled=true; feedbackEl('feedback-result').textContent=''; feedbackEl('feedback-status').textContent=''; feedbackEl('feedback-comparison').textContent='';
   for(const [,id] of feedbackFields) feedbackEl(id).value='';
   feedbackEl('revision-status').textContent=''; feedbackEl('revision-save').disabled=true;
 }
+function feedbackSetCard(visible){const card=feedbackEl('feedback-ai-card');if(!card)return;card.hidden=!visible;if(!visible)card.open=false;}
 function feedbackSubmissionReady(snapshot, flow, receipt){
   if(!snapshot || !articleSession) return;
   feedbackGeneration++; feedbackState={snapshot,flow,article:articleSession.text,session:articleSession,savedAnswers:RecordAnswers(snapshot)};
   if(receipt?.submissionId && typeof RecordClient!=='undefined')feedbackState.saver=RecordClient.createSaver({io:RecordClient.create({endpoint:SubmissionConfig.endpoint,getToken:()=>flow.getToken()}),recordId:receipt.submissionId,newId:()=>crypto.randomUUID()});
   feedbackEl('revision-save').disabled=!feedbackState.saver;
-  feedbackEl('revision-status').textContent='수정본을 저장하면 확장의 내 기록에서 다시 확인할 수 있습니다.';
-  globalThis.PanelUI?.tone(feedbackEl('revision-status'),'warning');
+  feedbackEl('revision-status').textContent='';
   feedbackEl('feedback-section').hidden=false; feedbackEl('feedback-article').value=articleSession.fallback?'':articleSession.text;
-  feedbackEl('feedback-consent').checked=false; feedbackEl('feedback-request').disabled=SubmissionConfig.feedbackTestEnabled!==true||articleSession.fallback;
+  // TASK-021: AI 피드백을 쓸 수 없으면 카드 자체를 숨긴다. 카드 안 버튼 클릭이 전송 동의다.
+  const available=SubmissionConfig.feedbackTestEnabled===true&&!articleSession.fallback;
+  feedbackEl('feedback-request').disabled=!available; feedbackSetCard(available);
   feedbackEl('feedback-result').textContent=''; feedbackEl('feedback-comparison').textContent='';
-  feedbackEl('feedback-status').textContent=articleSession.fallback?'본문 영역을 확인하지 못해 AI 피드백은 사용할 수 없습니다. 직접 수정·저장은 가능합니다.':(SubmissionConfig.feedbackTestEnabled===true?'글과 제출 항목을 확인하세요.':'AI 피드백은 준비 중입니다.');
-  globalThis.PanelUI?.tone(feedbackEl('feedback-status'),'warning');
+  feedbackEl('feedback-status').textContent='';
   for(const [field,id] of feedbackFields) feedbackEl(id).value=snapshot[field];
 }
 feedbackEl('feedback-compare').addEventListener('click',()=>{
@@ -56,16 +57,16 @@ feedbackEl('feedback-request').addEventListener('click',async()=>{
   if(button.disabled || !state)return;
   let timer;
   try{
-    if(SubmissionConfig.feedbackTestEnabled!==true || state.session.fallback || !feedbackEl('feedback-consent').checked)throw new Error('글과 제출 답안 전송에 동의해 주세요.');
+    if(SubmissionConfig.feedbackTestEnabled!==true || state.session.fallback)throw new Error('AI 피드백을 사용할 수 없습니다.');
     if(articleSession!==state.session || feedbackEl('feedback-article').value!==state.article)throw new Error('연결한 글을 다시 확인하세요.');
-    const token=state.flow.getToken(); if(!token)throw new Error('다시 로그인하세요.');
+    const token=state.flow.getToken(); if(!token){if(typeof accountOpenLogin==='function')accountOpenLogin('AI 피드백을 받으려면 다시 로그인하세요.');throw new Error('다시 로그인하세요.');}
     const url=new URL(SubmissionConfig.aiEndpoint);
     if((url.protocol!=='https:' && !(url.protocol==='http:'&&['127.0.0.1','localhost','[::1]'].includes(url.hostname)))||url.username||url.password||url.search||url.hash||url.pathname!=='/recommend')throw new Error('AI 서버 주소가 올바르지 않습니다.');
     url.pathname='/feedback'; const body=JSON.stringify({article:state.article,sessionId:state.snapshot.sessionId});
     if(state.article.length>12000 || new TextEncoder().encode(body).length>50000)throw new Error('글이 너무 깁니다.');
-    button.disabled=true; status.textContent='피드백을 요청하고 있습니다.';
+    button.disabled=true; status.textContent='피드백을 요청하고 있습니다. 최대 1분쯤 걸릴 수 있습니다.';
     globalThis.PanelUI?.tone(status,'warning');
-    const controller=new AbortController(); timer=setTimeout(()=>controller.abort(),15000);
+    const controller=new AbortController(); timer=setTimeout(()=>controller.abort(),60000);
     const response=await fetch(url.href,{method:'POST',headers:{'Content-Type':'application/json',Authorization:`Bearer ${token}`},body,credentials:'omit',cache:'no-store',redirect:'error',signal:controller.signal});
     if(!response.ok)throw new Error(response.status===429?'오늘 AI 사용 한도에 도달했습니다.':'AI 피드백 요청에 실패했습니다.');
     const result=await response.json(), suggestions=result?.feedback?.suggestions;
@@ -75,7 +76,7 @@ feedbackEl('feedback-request').addEventListener('click',async()=>{
     globalThis.PanelUI?.tone(status,'success');
   }catch(error){
     if(generation!==feedbackGeneration)return;
-    const safe=['글과 제출 답안 전송에 동의해 주세요.','연결한 글을 다시 확인하세요.','다시 로그인하세요.','AI 서버 주소가 올바르지 않습니다.','글이 너무 깁니다.','오늘 AI 사용 한도에 도달했습니다.','AI 피드백 요청에 실패했습니다.','AI 피드백 형식이 올바르지 않습니다.'];
+    const safe=['AI 피드백을 사용할 수 없습니다.','연결한 글을 다시 확인하세요.','다시 로그인하세요.','AI 서버 주소가 올바르지 않습니다.','글이 너무 깁니다.','오늘 AI 사용 한도에 도달했습니다.','AI 피드백 요청에 실패했습니다.','AI 피드백 형식이 올바르지 않습니다.'];
     status.textContent=safe.includes(error?.message)?error.message:'AI 피드백 요청을 완료하지 못했습니다.';
     globalThis.PanelUI?.tone(status,'error');
   }finally{clearTimeout(timer);if(generation===feedbackGeneration)button.disabled=SubmissionConfig.feedbackTestEnabled!==true||state.session.fallback;}

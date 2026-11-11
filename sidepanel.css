@@ -112,3 +112,18 @@ details.dev-only summary { cursor: pointer; color: var(--muted); font-weight: 60
 .records-list button { width: 100%; text-align: left; overflow-wrap: anywhere; }
 #records-section dd, #records-section p, #feedback-comparison { white-space: pre-wrap; overflow-wrap: anywhere; }
 #records-section select { width: 100%; min-width: 0; }
+
+/* TASK-021: 첫 화면 단순화 · 점진적 공개 */
+.header-row { display: flex; align-items: baseline; justify-content: space-between; gap: var(--space-2); flex-wrap: wrap; }
+.header-row h1 { margin: 0; }
+.header-actions button { margin-block: 0; }
+.account-bar.idle { border: 0; background: none; padding: 0; }
+#account-login[hidden], #account-toggle[hidden] { display: none; }
+#status:empty { display: none; }
+.callout { margin-block: var(--space-2); }
+.actions { display: flex; flex-wrap: wrap; gap: 0 var(--space-1); }
+.ai-card { border: 1px solid var(--border); border-radius: var(--radius); padding: var(--space-2) var(--space-3); }
+.ai-card[hidden] { display: none; }
+.ai-card > summary { cursor: pointer; font-weight: 600; }
+.ai-notice { font-size: .9rem; margin: var(--space-2) 0; padding: var(--space-2); border-radius: var(--radius); background: var(--surface); }
+.stepper li[hidden] { display: none; }

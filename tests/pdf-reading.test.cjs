@@ -171,7 +171,8 @@ test('패널은 PDF 뷰어와 연결해 단위별 중심 생각 → 문서 구�
   await e.analyze.handlers.click();
   assert.equal(tabMessages.length, 0);
   assert.equal(e['submission-article-title'].value, 'PDF p.2–3', '파일명(탭 제목)을 자동으로 쓰지 않는다');
-  assert.match(e.fallback.textContent, /단위 2개.*AI 추천·피드백 없이/);
+  assert.match(e.status.textContent, /PDF 단위 2개를 연결/);
+  assert.equal(e.fallback.textContent, '');
   assert.equal(e['pdf-nav'].hidden, false);
   assert.equal(e['structure-block'].hidden, true, '단위 단계에서는 구조도를 숨긴다');
   assert.equal(e['retell-submit-block'].hidden, true);
@@ -238,6 +239,35 @@ test('웹 탭의 PDF 주소는 뷰어 사용을 안내하고 본문 스크립트
   ctx.chrome.tabs.query = async () => [tab];
   ctx.chrome.tabs.get = async () => tab;
   await e.analyze.handlers.click();
-  assert.match(e['connect-status'].textContent, /PDF 뷰어 열기/);
+  assert.match(e['connect-status'].textContent, /PDF 열기/);
   assert.equal(e['pdf-nav'].hidden, true);
+});
+
+test('TASK-021: 뷰어의 「지정 완료」 알림은 같은 창 패널만 자동 연결하고, 다른 창·진행 중 훈련에는 연결하지 않는다', async () => {
+  const {elements: e, panelListeners, ctx} = panelHarness();
+  ctx.chrome.runtime.id = 'abc';
+  await tick();
+  const viewerSender = {id: 'abc', url: 'chrome-extension://abc/pdf-viewer.html', tab: {id: 21, windowId: 5, url: 'chrome-extension://abc/pdf-viewer.html'}};
+  // 다른 창의 뷰어: 응답하지 않는다(같은 창 패널의 응답을 가리지 않도록).
+  let other = null;
+  assert.equal(panelListeners[0]({target: 'side-panel', action: 'PDF_READY'}, {...viewerSender, tab: {...viewerSender.tab, windowId: 9}}, value => { other = value; }), false);
+  assert.equal(other, null);
+  // 확장 밖 발신자도 무시한다.
+  assert.equal(panelListeners[0]({target: 'side-panel', action: 'PDF_READY'}, {...viewerSender, id: 'evil'}, () => {}), false);
+  // 같은 창: 확인 창 없이 연결한다.
+  let confirms = 0; ctx.confirm = () => { confirms++; return true; };
+  const reply = await new Promise(resolve => { assert.equal(panelListeners[0]({target: 'side-panel', action: 'PDF_READY'}, viewerSender, resolve), true); });
+  assert.equal(reply.status, 'success');
+  assert.equal(e['article-result'].hidden, false);
+  assert.equal(e['pdf-nav'].hidden, false);
+  assert.equal(confirms, 0);
+  // 재지정 후 같은 뷰어의 재알림: 같은 PDF 세션이므로 다시 연결한다.
+  const again = await new Promise(resolve => panelListeners[0]({target: 'side-panel', action: 'PDF_READY'}, viewerSender, resolve));
+  assert.equal(again.status, 'success');
+  // 다른 탭의 뷰어가 알리면 진행 중 훈련을 지우지 않고 수동 연결을 안내한다.
+  let busy = null;
+  panelListeners[0]({target: 'side-panel', action: 'PDF_READY'}, {...viewerSender, tab: {...viewerSender.tab, id: 99}}, value => { busy = value; });
+  assert.equal(busy.status, 'busy');
+  assert.match(busy.message, /현재 탭 글 연결/);
+  assert.equal(e['pdf-nav'].hidden, false);
 });

@@ -75,6 +75,7 @@ function applyPdfPhase() {
 }
 function resetPdfMode() {
   pdfWorksheet = null;
+  setHidden('step-feedback', false);
   applyPdfPhase();
   const status = document.getElementById('pdf-nav-status'); if (status) status.textContent = '';
 }
@@ -123,7 +124,7 @@ document.getElementById('open-pdf-viewer')?.addEventListener('click', async () =
   try {
     const panelWindow = await chrome.windows.getCurrent();
     await chrome.tabs.create({url:chrome.runtime.getURL(PDF_VIEWER_PAGE), windowId:panelWindow.id});
-    showStatus('새 탭에서 PDF 파일을 열고 단위를 지정한 뒤 「현재 글 연결」을 누르세요.', false, document.getElementById('connect-status'));
+    showStatus('새 탭에서 PDF를 열고 「지정 완료」를 누르면 이 패널에 자동으로 연결됩니다.', false, document.getElementById('connect-status'));
   } catch { showStatus('PDF 뷰어를 열지 못했습니다.', true, document.getElementById('connect-status')); }
 });
 document.getElementById('pdf-prev')?.addEventListener('click', () => { if (pdfWorksheet && pdfWorksheet.index() > 0) gotoPdfUnit(pdfWorksheet.index() - 1); });
@@ -153,7 +154,23 @@ document.getElementById('pdf-back-units')?.addEventListener('click', () => {
   document.getElementById('main-idea').focus();
 });
 // 뷰어의 단위 번호표 → 패널 이동. 연결 토큰이 같은 패널만 응답한다(다른 창의 패널은 조용히 무시).
+// TASK-021: 뷰어에서 「지정 완료」를 누르면 같은 창의 패널이 그 탭을 자동으로 연결한다.
+// 다른 창의 패널은 응답하지 않는다(먼저 응답한 패널이 결과가 되므로 창 id를 동기적으로 확인).
+let panelWindowId = null;
+Promise.resolve(chrome.windows?.getCurrent?.()).then(win => { if (Number.isInteger(win?.id)) panelWindowId = win.id; }, () => {});
+function handlePdfReady(sender, sendResponse) {
+  const tab = sender?.tab;
+  if (sender?.id !== chrome.runtime.id || !tab || !isPdfViewerUrl(sender.url || tab.url) || panelWindowId === null || tab.windowId !== panelWindowId) return false;
+  if (operationBusy || analyzeButton.disabled) { sendResponse({status:'busy', message:'사이드 패널이 다른 작업 중입니다. 잠시 후 패널에서 「현재 탭 글 연결」을 누르세요.'}); return false; }
+  if (articleSession && !(articleSession.kind === 'pdf' && articleSession.tabId === tab.id)) { sendResponse({status:'busy', message:'사이드 패널에 진행 중인 훈련이 있습니다. 패널에서 「현재 탭 글 연결」을 눌러 새로 시작하세요.'}); return false; }
+  connectCurrentTab({skipConfirm:true}).then(() => {
+    const connected = articleSession?.kind === 'pdf' && articleSession.tabId === tab.id;
+    sendResponse(connected ? {status:'success'} : {status:'error', message:document.getElementById('connect-status')?.textContent || '사이드 패널에 연결하지 못했습니다.'});
+  }, () => sendResponse({status:'error', message:'사이드 패널에 연결하지 못했습니다.'}));
+  return true;
+}
 chrome.runtime?.onMessage?.addListener?.((message, sender, sendResponse) => {
+  if (message?.target === 'side-panel' && message.action === 'PDF_READY') return handlePdfReady(sender, sendResponse);
   if (message?.target !== 'side-panel' || message.action !== 'GOTO_UNIT') return;
   if (!pdfWorksheet || articleSession?.kind !== 'pdf' || message.token !== articleSession.token || (sender?.tab && sender.tab.id !== articleSession.tabId)) return;
   if (document.getElementById('reading').hidden) { sendResponse({status:'error', message:'읽기·구조화 단계에서만 단위를 이동할 수 있습니다.'}); return; }
@@ -163,9 +180,10 @@ chrome.runtime?.onMessage?.addListener?.((message, sender, sendResponse) => {
   sendResponse({status:'success'});
 });
 
-analyzeButton.addEventListener('click', async () => {
+analyzeButton.addEventListener('click', () => connectCurrentTab());
+async function connectCurrentTab({skipConfirm = false} = {}) {
   if (operationBusy || analyzeButton.disabled) return;
-  if (articleSession && !confirm('훈련 종료 후 작성 내용을 지우고 새 시도를 시작할까요? 같은 글도 새 시도이며 이전 인출 수행과 구분됩니다.')) return;
+  if (articleSession && !skipConfirm && !confirm('훈련 종료 후 작성 내용을 지우고 새 시도를 시작할까요? 같은 글도 새 시도이며 이전 인출 수행과 구분됩니다.')) return;
   analyzeButton.disabled=true;
   if (articleSession && !await restoreBlind(document.getElementById('connect-status'))) {analyzeButton.disabled=false;return;}
   if (typeof resetRecordsPanel === 'function') resetRecordsPanel();
@@ -215,7 +233,7 @@ analyzeButton.addEventListener('click', async () => {
       if (!tab.url) throw new Error('탭 주소를 확인할 수 없습니다. 기사 탭에서 확장 프로그램 아이콘을 다시 눌러주세요.');
       let url;
       try { url = new URL(tab.url); } catch { throw new Error('페이지 주소를 확인할 수 없습니다.'); }
-      if (url.protocol === 'file:' || /\.pdf$/i.test(url.pathname)) throw new Error('PDF는 「PDF 뷰어 열기」로 파일을 열어 연결하세요.');
+      if (url.protocol === 'file:' || /\.pdf$/i.test(url.pathname)) throw new Error('PDF는 「PDF 열기」로 파일을 열어 연결하세요.');
       if (!['http:', 'https:'].includes(url.protocol) || ['chrome.google.com', 'chromewebstore.google.com'].includes(url.hostname)) {
         throw new Error('이 페이지에는 접근할 수 없습니다. 일반 웹 기사에서 다시 시도하세요.');
       }
@@ -237,15 +255,15 @@ analyzeButton.addEventListener('click', async () => {
       pdfWorksheet = PdfWorksheet.create(response.paragraphs);
       renderPdfNav();
     }
-    document.getElementById('counts').textContent = `문자 수: ${response.charCount} · 단어 수(공백 기준): ${response.wordCount}`;
-    document.getElementById('fallback').textContent = response.fallback ? '주의: 기사 영역을 찾지 못해 페이지 전체 텍스트를 사용했습니다.' : (viewer ? `PDF 단위 ${response.paragraphs.length}개를 연결했습니다. PDF 읽기는 AI 추천·피드백 없이 진행합니다.` : '');
+    document.getElementById('fallback').textContent = response.fallback ? '본문 영역을 찾지 못해 페이지 전체를 가져왔습니다.' : '';
+    setHidden('step-feedback', viewer);
     resultElement.hidden = false;
     // @development-start
     document.getElementById('mock-recommend').disabled = false;
     // @development-end
     if (typeof pilotAiEnable === 'function') pilotAiEnable();
     showStatus('', false, document.getElementById('connect-status'));
-    showStatus('본문을 연결했습니다. 원문을 직접 읽고 정리하세요.');
+    showStatus(viewer ? `PDF 단위 ${response.paragraphs.length}개를 연결했습니다. 준비되면 「읽기·구조화 시작」을 누르세요.` : '글을 연결했습니다. 준비되면 「읽기·구조화 시작」을 누르세요.');
   } catch (error) {
     articleSession = null; resetPdfMode();
     showStatus(error?.message?.startsWith('Cannot access') || error?.message?.includes('Extensions gallery') || error?.message?.includes('No tab with id') || error?.message?.includes('Receiving end')
@@ -254,7 +272,7 @@ analyzeButton.addEventListener('click', async () => {
   } finally {
     analyzeButton.disabled = false;
   }
-});
+}
 
 function updateStructureLabels() {
   const labels = { claim: ['주장', '근거'], cause: ['원인', '결과'], problem: ['문제', '해결'] };
@@ -416,7 +434,7 @@ document.getElementById('to-review').addEventListener('click',async () => {
   }
   for (const [id,value] of Object.entries({'summary-main':values.main,'summary-primary':values.primary,'summary-support':values.support,'summary-relation':values.relation,'summary-retell':retell,'summary-type':typeText})) document.getElementById(id).textContent = value;
   document.getElementById('retell-view').hidden = true; document.getElementById('review-view').hidden = false; document.getElementById('step4')?.focus();
-  showStatus('원문을 복원했습니다. 답안을 확인하고 동의 후 제출하세요.');
+  showStatus('원문을 다시 표시했습니다. 답안을 확인하고 저장하세요.');
 });
 document.getElementById('end-training').addEventListener('click',async () => {
   if(operationBusy || !confirm('훈련을 종료하고 미저장 내용을 삭제할까요?'))return;operationBusy=true;
@@ -428,7 +446,7 @@ document.getElementById('end-training').addEventListener('click',async () => {
   document.getElementById('worksheet').reset();clearWorksheetErrors();
   for(const id of ['prior','main-idea','primary','support','relation','retell-input','reflection','new-words','interests','submission-article-title','submission-source-url','mock-token']){const el=document.getElementById(id);if(el)el.value='';}
   for(const id of ['submission-consent','submission-article-consent']){const el=document.getElementById(id);if(el)el.checked=false;}
-  for(const id of ['retell-error','retell-status','revisit-note','connect-status','reading-start-status','counts','fallback','mock-status','mock-result','summary-main','summary-type','summary-primary','summary-support','summary-relation','summary-retell']){const el=document.getElementById(id);if(el)el.textContent='';}
+  for(const id of ['retell-error','retell-status','revisit-note','connect-status','reading-start-status','fallback','mock-status','mock-result','summary-main','summary-type','summary-primary','summary-support','summary-relation','summary-retell']){const el=document.getElementById(id);if(el)el.textContent='';}
   for(const id of ['retell-view','review-view','reading','article-result','mock-result']){const el=document.getElementById(id);if(el)el.hidden=true;}
   document.getElementById('preparation').hidden=false;
   // @development-start

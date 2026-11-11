@@ -2,10 +2,21 @@
 // 상단 계정 바: AI 추천·제출·피드백이 공유하는 단일 로그인(panelFlow, submission-panel.js).
 // 비밀번호는 시도 직후 비우고, 토큰·이메일은 패널 메모리에만 둔다.
 const accountEl = id => document.getElementById(id);
+// TASK-021: 로그인 폼은 기본으로 접어 두고, 헤더 「로그인」이나 저장·기록·AI처럼 로그인이 필요한 순간에만 펼친다.
+let accountLoginOpen = false;
+function accountIdentity() {
+  try { return typeof panelSubmissionFlow !== 'undefined' && panelSubmissionFlow?.getIdentity?.() || (typeof panelAccount !== 'undefined' && panelAccount?.identity) || null; }
+  catch { return null; }
+}
+function accountSignedIn() { return !!accountIdentity(); }
 function accountRender() {
-  let identity = null;
-  try { identity = typeof panelSubmissionFlow !== 'undefined' && panelSubmissionFlow?.getIdentity?.() || (typeof panelAccount !== 'undefined' && panelAccount?.identity) || null; }
-  catch { identity = null; }
+  const identity = accountIdentity();
+  if (identity) accountLoginOpen = false;
+  const login = accountEl('account-login'), toggle = accountEl('account-toggle');
+  if (login) login.hidden = !!identity || !accountLoginOpen;
+  if (toggle) { toggle.hidden = !!identity; toggle.textContent = accountLoginOpen ? '로그인 닫기' : '로그인'; toggle.setAttribute?.('aria-expanded', String(accountLoginOpen)); }
+  accountEl('account-bar')?.classList?.toggle?.('idle', !identity && !accountLoginOpen);
+  const hint = accountEl('submission-login-hint'); if (hint) hint.hidden = !!identity;
   accountEl('account-signed-in').hidden = !identity;
   accountEl('account-form').hidden = !!identity || SubmissionConfig.googleLoginEnabled===true;
   accountEl('account-google').hidden = !!identity || SubmissionConfig.googleLoginEnabled!==true;
@@ -42,8 +53,23 @@ accountEl('account-logout').addEventListener('click', () => {
   accountEl('account-status').textContent = '로그아웃했습니다.';
   globalThis.PanelUI?.tone(accountEl('account-status'),'success');
   accountRender();
-  accountEl('ai-email').focus?.();
+  accountEl('account-toggle')?.focus?.();
 });
+// 로그인이 필요한 순간에 헤더 로그인 영역을 펼치고 첫 입력으로 포커스를 옮긴다.
+function accountOpenLogin(message) {
+  if (accountSignedIn()) return false;
+  accountLoginOpen = true;
+  accountRender();
+  const status = accountEl('account-status');
+  if (message && status) { status.textContent = message; globalThis.PanelUI?.tone(status,'warning'); }
+  (SubmissionConfig.googleLoginEnabled === true ? accountEl('account-google-login') : accountEl('ai-email'))?.focus?.();
+  return true;
+}
+accountEl('account-toggle')?.addEventListener('click', () => {
+  if (accountLoginOpen) { accountLoginOpen = false; accountRender(); return; }
+  accountOpenLogin();
+});
+accountEl('submission-login-open')?.addEventListener('click', () => accountOpenLogin('저장하려면 로그인하세요. 로그인 후 「동의하고 저장」을 다시 누르세요.'));
 accountRender();
 
 let currentGoogleLogin=null;

@@ -7,11 +7,12 @@ function setup(){
  const snapshot={sessionId:'11111111-1111-4111-8111-111111111111',mainIdea:'최초',primary:'주장',support:'근거',relation:'관계',retell:'재정리'};
  return {e,context,snapshot,flow:{getToken:()=> 'token'},calls:()=>calls};
 }
-test('저장 확인 전에 피드백 요청이 없고 동의 후에만 요청한다',async()=>{
+test('저장 확인 전에는 피드백 카드가 없고, 저장 후 카드 안 버튼 클릭(전송 동의)으로만 요청한다',async()=>{
  const t=setup();await t.e['feedback-request'].click();assert.equal(t.calls(),0);
  t.context.feedbackSubmissionReady(t.snapshot,t.flow);
- await t.e['feedback-request'].click();assert.equal(t.calls(),0);
- t.e['feedback-consent'].checked=true;await t.e['feedback-request'].click();assert.equal(t.calls(),1);
+ assert.equal(t.e['feedback-ai-card'].hidden,false);assert.equal(t.e['feedback-ai-card'].open,undefined,'카드는 접힌 상태로 시작한다');
+ assert.equal(t.e['feedback-article'].value,'자체 작성 글');
+ await t.e['feedback-request'].click();assert.equal(t.calls(),1);
  assert.match(t.e['feedback-result'].textContent,/점검/);
 });
 test('수정은 최초 제출을 바꾸지 않고 원본과 수정본을 비교하며 초기화로 지운다',()=>{
@@ -37,6 +38,14 @@ test('본문 추출 fallback은 AI 전송을 계속 막지만 저장 확인된 �
  t.context.feedbackSubmissionReady(t.snapshot,t.flow);
  assert.equal(t.e['feedback-section'].hidden,false);assert.equal(t.e['feedback-main'].value,'최초');
  assert.equal(t.e['feedback-article'].value,'');assert.equal(t.e['feedback-request'].disabled,true);
- t.e['feedback-consent'].checked=true;await t.e['feedback-request'].click();assert.equal(t.calls(),0);
+ assert.equal(t.e['feedback-ai-card'].hidden,true,'쓸 수 없는 AI 피드백은 카드째 숨긴다');
+ await t.e['feedback-request'].click();assert.equal(t.calls(),0);
+ t.e['feedback-request'].disabled=false;await t.e['feedback-request'].click();assert.equal(t.calls(),0);
+});
+
+test('AI 피드백 기능이 꺼져 있으면 카드를 숨기고 요청하지 않는다',async()=>{
+ const t=setup();t.context.SubmissionConfig.feedbackTestEnabled=false;
+ t.context.feedbackSubmissionReady(t.snapshot,t.flow);
+ assert.equal(t.e['feedback-ai-card'].hidden,true);assert.equal(t.e['feedback-request'].disabled,true);
  t.e['feedback-request'].disabled=false;await t.e['feedback-request'].click();assert.equal(t.calls(),0);
 });

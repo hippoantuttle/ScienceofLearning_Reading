@@ -133,7 +133,7 @@
       range = {from, to}; blocks = found; units = PdfUnits.create(blocks); units.autoSelect();
       setControls(); redrawAll();
       pdfViewer.currentPageNumber = from;
-      status(`문단 상자 ${found.length}개 중 ${units.count()}개를 단위로 자동 지정했습니다. 원본 위 상자를 클릭해 바꾸세요.`);
+      status(`p.${from}–${to} 범위를 단위 ${units.count()}개로 자동 지정했습니다.`);
     } catch {
       if (mine === generation) status('텍스트를 추출하지 못했습니다. 다른 범위나 파일로 다시 시도하세요.', 'error');
     }
@@ -204,14 +204,22 @@
   el('confirm-extraction').addEventListener('click', () => {
     if (!units?.count()) { status('단위를 하나 이상 지정하세요.', 'error'); return; }
     confirmed = true; setControls(); redrawAll();
-    status(`단위 ${units.count()}개로 확정했습니다. 사이드 패널에서 「현재 글 연결」을 누르세요.`);
+    const count = units.count(), mine = generation;
+    status(`단위 ${count}개로 확정했습니다. 사이드 패널에 연결하고 있습니다.`);
     el('edit-extraction').focus();
+    // TASK-021: 같은 창의 사이드 패널에 자동 연결을 요청한다. 패널이 닫혀 있거나 바쁘면 수동 연결을 안내한다.
+    const manual = `단위 ${count}개로 확정했습니다. 사이드 패널을 열고 「현재 탭 글 연결」을 누르세요.`;
+    Promise.resolve(chrome.runtime.sendMessage({target: 'side-panel', action: 'PDF_READY'})).then(response => {
+      if (mine !== generation || !confirmed) return;
+      if (response?.status === 'success') status(`단위 ${count}개를 사이드 패널에 연결했습니다. 패널에서 「읽기·구조화 시작」을 누르세요.`);
+      else status(response?.message ? `단위 ${count}개로 확정했습니다. ${response.message}` : manual, response?.status === 'error' ? 'error' : 'status');
+    }, () => { if (mine === generation && confirmed) status(manual); });
   });
   el('edit-extraction').addEventListener('click', () => {
     if (masked) return;
     if (session && !confirm('사이드 패널 연결이 해제되고 작성 중인 훈련은 다시 연결해야 합니다. 계속할까요?')) return;
     invalidateSession(); confirmed = false; setControls(); redrawAll();
-    status('단위를 다시 지정하세요. 완료 후 사이드 패널에서 다시 연결해야 합니다.');
+    status('단위를 다시 지정하세요. 「지정 완료」를 누르면 사이드 패널에 다시 연결됩니다.');
   });
 
   // 쪽 이동·확대·찾기 (PDF.js 부품 기능)
@@ -270,7 +278,7 @@
   function handle(message) {
     if (message.action === 'EXTRACT_ARTICLE') {
       restore();
-      if (!pdfDocument || !confirmed || !units?.count()) return {status: 'error', code: 'NOT_CONFIRMED', message: 'PDF 뷰어에서 파일을 열고 단위를 지정한 뒤 「지정 완료」를 누르고 연결하세요.'};
+      if (!pdfDocument || !confirmed || !units?.count()) return {status: 'error', code: 'NOT_CONFIRMED', message: 'PDF 뷰어에서 파일을 열고 「지정 완료」를 누르세요.'};
       sessionUnits = units.materialize(joinTexts);
       const text = sessionUnits.map(unit => unit.text).join('\n\n');
       session = {token: crypto.randomUUID(), generation};

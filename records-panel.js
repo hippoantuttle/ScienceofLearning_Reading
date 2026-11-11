@@ -95,7 +95,10 @@ recordsEl('records-open').addEventListener('click',async()=>{
   recordsEl('submission-article-consent').checked=false;
   for(const id of ['preparation','reading','retell-view','review-view','feedback-section'])recordsEl(id).hidden=true;
   recordsEl('training-context').hidden=true;
-  recordsEl('records-section').hidden=false;resetRecordsPanel();recordsEl('records-heading').focus();await recordsLoad();
+  recordsEl('records-section').hidden=false;resetRecordsPanel();recordsEl('records-heading').focus();
+  // TASK-021: 로그인 전이면 헤더 로그인을 펼친다. 로그인 성공 시 account-bar.js가 기록을 다시 불러온다.
+  if(typeof accountOpenLogin==='function'&&accountOpenLogin('내 기록을 보려면 로그인하세요.'))return;
+  await recordsLoad();
 });
 recordsEl('records-close').addEventListener('click',()=>{
   resetRecordsPanel();recordsEl('records-section').hidden=true;recordsEl('preparation').hidden=false;recordsEl('article-result').hidden=true;recordsEl('training-context').hidden=false;

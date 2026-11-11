@@ -34,3 +34,13 @@ test('HTML: 글 연결이 읽기 준비의 첫 행동이고 개발 도구는 기
  assert.equal((html.match(/type="password" autocomplete="current-password"/g)||[]).length,1);
  assert.ok(html.indexOf('account-bar.js')>html.indexOf('submission-panel.js'));assert.ok(html.indexOf('panel-shell.js')>html.indexOf('submission-config.local.js'));
 });
+test('TASK-021: 미저장 경고는 작성 단계에서 저장 확인 전까지만 보인다',()=>{
+ const sections=Object.fromEntries(PanelShell.STEPS.map(id=>[id,{hidden:true}]));
+ const note={hidden:true},context={dataset:{}};
+ const doc={getElementById:id=>id==='unsaved-note'?note:id==='training-context'?context:sections[id],querySelectorAll:()=>[]};
+ sections.preparation.hidden=false;PanelShell.renderStepper(doc);assert.equal(note.hidden,true,'준비 단계에서는 숨김');
+ sections.preparation.hidden=true;sections.reading.hidden=false;PanelShell.renderStepper(doc);assert.equal(note.hidden,false);
+ sections.reading.hidden=true;sections['review-view'].hidden=false;PanelShell.renderStepper(doc);assert.equal(note.hidden,false);
+ context.dataset.saved='true';PanelShell.renderStepper(doc);assert.equal(note.hidden,true,'저장 확인 후 숨김');
+ delete context.dataset.saved;sections['feedback-section'].hidden=false;PanelShell.renderStepper(doc);assert.equal(note.hidden,true,'피드백 단계에서는 숨김');
+});

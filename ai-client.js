@@ -59,7 +59,7 @@ const AIContract = (() => {
     provider: 'AI 공급자 응답에 실패했습니다.'
   };
   // 파일럿 Worker용: 로그인 액세스 토큰과 빈 요청만 전송한다. endpoint는 https 또는 loopback만 허용한다.
-  async function requestPilot(accessToken, endpoint, {fetchImpl = fetch, timeoutMs = 15000, article} = {}) {
+  async function requestPilot(accessToken, endpoint, {fetchImpl = fetch, timeoutMs = 60000, article} = {}) {
     if (typeof accessToken !== 'string' || !accessToken) throw new Error('로그인이 필요합니다.');
     let url; try { url = new URL(endpoint); } catch { throw new Error('AI 서버 주소가 올바르지 않습니다.'); }
     const loopback = url.protocol === 'http:' && ['127.0.0.1','[::1]','localhost'].includes(url.hostname);

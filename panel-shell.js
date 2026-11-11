@@ -3,6 +3,7 @@
 // 화면 표시만 담당하며 AI 요청 차단은 각 패널의 게이트가 계속 담당한다.
 const PanelShell = (() => {
   const STEPS = ['preparation', 'reading', 'retell-view', 'review-view', 'feedback-section'];
+  const UNSAVED_STEPS = ['reading', 'retell-view', 'review-view'];
   function devToolsEnabled(config, contract) {
     return !!(config && contract && typeof contract.isLoopbackEndpoint === 'function' && contract.isLoopbackEndpoint(config.aiEndpoint));
   }
@@ -26,6 +27,9 @@ const PanelShell = (() => {
       if (position === index) item.setAttribute('aria-current', 'step'); else item.removeAttribute('aria-current');
       item.classList.toggle('done', position < index);
     }
+    // TASK-021: 미저장 경고는 작성 중(읽기~정리) 단계에서 저장 확인 전까지만 보인다.
+    const note = doc.getElementById('unsaved-note');
+    if (note) note.hidden = !UNSAVED_STEPS.includes(current) || doc.getElementById('training-context')?.dataset?.saved === 'true';
     return current;
   }
   function start(doc) {

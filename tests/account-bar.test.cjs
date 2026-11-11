@@ -37,3 +37,15 @@ test('저장 확인되지 않은 제출이 있으면 로그아웃 전에 확인�
  t.e['account-logout'].handlers.click();
  assert.match(t.calls.confirms[0],/재시도/);assert.equal(t.ctx.panelFlow().getToken(),'tok');
 });
+test('TASK-021: 로그인 영역은 접힌 채 시작하고, 헤더 버튼·로그인이 필요한 순간에만 펼치며 로그인하면 닫는다',async()=>{
+ const t=setup();
+ assert.equal(t.e['account-login'].hidden,true,'처음에는 로그인 폼을 접는다');assert.equal(t.e['account-toggle'].hidden,false);
+ assert.equal(t.e['submission-login-hint'].hidden,false,'저장 화면에 로그인 필요 안내를 보인다');
+ t.e['account-toggle'].handlers.click();assert.equal(t.e['account-login'].hidden,false);assert.equal(t.e['account-toggle'].textContent,'로그인 닫기');
+ t.e['account-toggle'].handlers.click();assert.equal(t.e['account-login'].hidden,true);
+ assert.equal(t.ctx.accountOpenLogin('저장하려면 로그인하세요.'),true);
+ assert.equal(t.e['account-login'].hidden,false);assert.match(t.e['account-status'].textContent,/저장하려면/);
+ await login(t);
+ assert.equal(t.e['account-login'].hidden,true);assert.equal(t.e['account-toggle'].hidden,true);assert.equal(t.e['submission-login-hint'].hidden,true);
+ assert.equal(t.ctx.accountOpenLogin('x'),false,'로그인 상태에서는 펼치지 않는다');
+});

@@ -97,7 +97,7 @@ test('실제 패키지 스크립트는 개발 DOM 없이 읽기·Retell·복원�
   assert.equal(t.calls.restore, 1); assert.equal(e['review-view'].hidden, false);
   assert.equal(e['summary-retell'].textContent, '합성 다시 말하기');
   // No configured service: submission failure is explicit and preserves inputs.
-  e['submission-consent'].checked=true;
+  
   await e['submission-send'].handlers.click();
   assert.match(e['submission-status'].textContent, /설정되지|유지/);
   assert.equal(e['main-idea'].value, '합성 답안');
@@ -172,14 +172,14 @@ test('생성된 설치본의 로그인·최초 제출·재조회가 실제 Worke
     await e.analyze.handlers.click();await e['start-reading'].handlers.click();
     for(const id of ['main-idea','primary','support','relation'])e[id].value='합성 답안';
     await e.worksheet.handlers.submit();e['retell-input'].value='합성 다시 말하기';await e['to-review'].handlers.click();
-    e['submission-consent'].checked=true;await e['submission-send'].handlers.click();
+    await e['submission-send'].handlers.click();
     if(legacyRoot){
       assert.match(e['submission-status'].textContent,/저장 요청 실패 \(404\)/);
       assert.equal(databaseWrites,0);assert.equal(e['main-idea'].value,'합성 답안');
       assert.equal(vm.runInContext('panelFlow().verifiedSnapshot()',t.context),null);
       assert.deepEqual(paths,['/']);
     } else {
-      assert.match(e['submission-status'].textContent,/저장 및 재조회 확인이 완료/);
+      assert.match(e['submission-status'].textContent,/저장했습니다/);
       assert.equal(databaseWrites,1);assert.equal(row.main_idea,'합성 답안');
       assert.deepEqual(paths,['/submissions','/submissions']);
       assert.equal(vm.runInContext('panelFlow().verifiedSnapshot().mainIdea',t.context),'합성 답안');
@@ -240,7 +240,7 @@ test('설치본의 제출 장애 복구는 실제 Worker와 연결해 원래 답
     await e.analyze.handlers.click();await e['start-reading'].handlers.click();
     for(const id of ['main-idea','primary','support','relation'])e[id].value='최초 합성 답안';
     await e.worksheet.handlers.submit();e['retell-input'].value='합성 인출';await e['to-review'].handlers.click();
-    e['submission-consent'].checked=true;await e['submission-send'].handlers.click();
+    await e['submission-send'].handlers.click();
     assert.equal(vm.runInContext('panelFlow().verifiedSnapshot()',fixture.context),null);
     assert.equal(e['main-idea'].value,'최초 합성 답안');
     assert.equal(e['feedback-section'].hidden,true);
@@ -256,7 +256,7 @@ test('설치본의 제출 장애 복구는 실제 Worker와 연결해 원래 답
     }
     e['main-idea'].value='실패 후 편집한 답안';
     await e['submission-send'].handlers.click();
-    assert.match(e['submission-status'].textContent,/저장 및 재조회 확인이 완료/);
+    assert.match(e['submission-status'].textContent,/저장했습니다/);
     assert.equal(writes,1);assert.equal(row.main_idea,'최초 합성 답안');
     assert.equal(attempts.length,2);assert.deepEqual(attempts[0],attempts[1]);
     assert.equal(e['main-idea'].value,'실패 후 편집한 답안');
@@ -294,20 +294,20 @@ test('설치본은 AI 한도·장애 후에도 직접 제출·수정 저장을 �
     const fixture=panelFixture(assemble({config:{...config,articleTestEnabled:true,feedbackTestEnabled:true}}).files,fetchImpl),e=fixture.elements;
     e['ai-email'].value='synthetic@example.invalid';e['ai-password'].value='synthetic-only';
     await e['account-form'].handlers.submit({preventDefault(){}});
-    await e.analyze.handlers.click();e['article-ai-consent'].checked=true;
+    await e.analyze.handlers.click();
     await e['article-ai-recommend'].handlers.click();
     assert.equal(aiCalls,1);assert.equal(e['ai-result'].hidden,true);
     assert.match(e['article-ai-status'].textContent,aiStatus===429?/한도/:/실패/);
     await e['start-reading'].handlers.click();
     // Even a forced button state cannot bypass the reading-stage request gate.
-    e['article-ai-recommend'].disabled=false;e['article-ai-consent'].checked=true;
+    e['article-ai-recommend'].disabled=false;
     e['article-ai-preview'].value='직접 작성한 가상 글입니다.';
     await e['article-ai-recommend'].handlers.click();assert.equal(aiCalls,1);
     for(const id of ['main-idea','primary','support','relation'])e[id].value='직접 쓴 합성 답안';
     await e.worksheet.handlers.submit();e['retell-input'].value='직접 인출';await e['to-review'].handlers.click();
-    e['submission-consent'].checked=true;await e['submission-send'].handlers.click();
-    assert.match(e['submission-status'].textContent,/저장 및 재조회 확인이 완료/);
-    e['feedback-consent'].checked=true;await e['feedback-request'].handlers.click();
+    await e['submission-send'].handlers.click();
+    assert.match(e['submission-status'].textContent,/저장했습니다/);
+    await e['feedback-request'].handlers.click();
     assert.equal(aiCalls,2);assert.equal(e['feedback-result'].textContent,'');
     assert.match(e['feedback-status'].textContent,aiStatus===429?/한도/:/실패/);
     e['feedback-main'].value='AI 없이 직접 고친 합성 답안';
@@ -357,10 +357,10 @@ test('Google 설치본은 검증된 계정의 사전 등록 승인 후 로그인
   await e.analyze.handlers.click();await e['start-reading'].handlers.click();
   for(const id of ['main-idea','primary','support','relation'])e[id].value='Google 합성 답안';
   await e.worksheet.handlers.submit();e['retell-input'].value='합성 인출';await e['to-review'].handlers.click();
-  e['submission-consent'].checked=true;await e['submission-send'].handlers.click();
+  await e['submission-send'].handlers.click();
   assert.equal(e['account-google'].hidden,false);assert.equal(e['main-idea'].value,'Google 합성 답안');
   const before=claims;currentUser=other;await e['account-google-login'].handlers.click();
   assert.equal(claims,before);assert.match(e['account-status'].textContent,/같은 Google/);
   currentUser=owner;await e['account-google-login'].handlers.click();await e['submission-send'].handlers.click();
-  assert.equal(saves,1);assert.match(e['submission-status'].textContent,/저장 및 재조회 확인이 완료/);
+  assert.equal(saves,1);assert.match(e['submission-status'].textContent,/저장했습니다/);
 });

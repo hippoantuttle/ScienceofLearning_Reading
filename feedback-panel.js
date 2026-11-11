@@ -28,6 +28,25 @@ feedbackEl('feedback-compare').addEventListener('click',()=>{
   if(!feedbackState)return;
   feedbackEl('feedback-comparison').textContent=feedbackFields.map(([field,id,label])=>`${label}\n최초: ${feedbackState.snapshot[field]}\n수정: ${feedbackEl(id).value}`).join('\n\n');
 });
+// 중급 루브릭 피드백(server/ai/feedback.mjs parseFeedback와 같은 형식). 점수는 받지도 표시하지도 않는다.
+const FEEDBACK_CRITERIA=['핵심 내용 포함','변형/자기 언어화','정확성','구조/응집성'];
+function feedbackValid(f){
+  const keys=(o,k)=>!!o&&typeof o==='object'&&!Array.isArray(o)&&Object.keys(o).sort().join('|')===[...k].sort().join('|');
+  const text=(v,max,empty=false)=>typeof v==='string'&&(empty||v.trim().length>0)&&v.length<=max&&!/[<>]/.test(v);
+  const list=(v,min,max,ok)=>Array.isArray(v)&&v.length>=min&&v.length<=max&&v.every(ok);
+  return keys(f,['overall','criteria','strengths','improvements','missingIdea'])&&text(f.overall,400)
+    &&list(f.criteria,4,4,(c,i)=>keys(c,['name','reason'])&&c.name===FEEDBACK_CRITERIA[i]&&text(c.reason,300))
+    &&list(f.strengths,1,2,s=>keys(s,['quote','comment'])&&text(s.quote,300)&&text(s.comment,400))
+    &&list(f.improvements,1,2,s=>keys(s,['quote','direction'])&&text(s.quote,300)&&text(s.direction,500))
+    &&text(f.missingIdea,300,true);
+}
+function feedbackFormat(f){
+  const parts=['총평\n'+f.overall,'항목별 근거\n'+f.criteria.map(c=>`· ${c.name}: ${c.reason}`).join('\n'),
+    '잘한 점\n'+f.strengths.map((s,i)=>`${i+1}. "${s.quote}"\n   ${s.comment}`).join('\n'),
+    '개선 제안\n'+f.improvements.map((s,i)=>`${i+1}. "${s.quote}"\n   ${s.direction}`).join('\n')];
+  if(f.missingIdea)parts.push('다시 살펴볼 핵심 아이디어\n'+f.missingIdea);
+  return parts.join('\n\n');
+}
 function RecordAnswers(snapshot){return Object.fromEntries(feedbackFields.map(([field])=>[field,snapshot[field]]));}
 function feedbackDirty(){return !!feedbackState && feedbackFields.some(([field,id])=>feedbackEl(id).value!==feedbackState.savedAnswers[field]);}
 for(const [,id] of feedbackFields)feedbackEl(id).addEventListener('input',()=>{feedbackEl('revision-status').textContent=feedbackDirty()?'미저장 수정이 있습니다.':'';globalThis.PanelUI?.tone(feedbackEl('revision-status'),'warning');});
@@ -70,10 +89,10 @@ feedbackEl('feedback-request').addEventListener('click',async()=>{
     const controller=new AbortController(); timer=setTimeout(()=>controller.abort(),60000);
     const response=await fetch(url.href,{method:'POST',headers:{'Content-Type':'application/json',Authorization:`Bearer ${token}`},body,credentials:'omit',cache:'no-store',redirect:'error',signal:controller.signal});
     if(!response.ok)throw new Error(response.status===429?'오늘 AI 사용 한도에 도달했습니다.':'AI 피드백 요청에 실패했습니다.');
-    const result=await response.json(), suggestions=result?.feedback?.suggestions;
-    if(result?.kind!=='feedback'||!Array.isArray(suggestions)||suggestions.length<1||suggestions.length>3||!suggestions.every(x=>typeof x==='string'&&x.trim()&&x.length<=500&&!/[<>]/.test(x)))throw new Error('AI 피드백 형식이 올바르지 않습니다.');
+    const result=await response.json();
+    if(result?.kind!=='feedback'||!feedbackValid(result.feedback))throw new Error('AI 피드백 형식이 올바르지 않습니다.');
     if(generation!==feedbackGeneration||state.flow.getToken()!==token)return;
-    feedbackEl('feedback-result').textContent=suggestions.map((x,i)=>`${i+1}. ${x}`).join('\n'); status.textContent='참고용 피드백입니다. 직접 판단하고 수정하세요.';
+    feedbackEl('feedback-result').textContent=feedbackFormat(result.feedback); status.textContent='참고용 피드백입니다. 직접 판단하고 수정하세요.';
     globalThis.PanelUI?.tone(status,'success');
   }catch(error){
     if(generation!==feedbackGeneration)return;

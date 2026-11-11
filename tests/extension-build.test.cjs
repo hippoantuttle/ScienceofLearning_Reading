@@ -425,7 +425,7 @@ test('Google 설치본의 저장은 401 뒤 같은 내용으로 한 번 갱신 �
       return Response.json({status:'saved',submissionId:recordId,savedAt:'2026-11-11T00:00:00Z',...(options.method==='GET'?{payload:snapshot}:{})});
     }
     assert.equal(route.pathname,'/feedback');assert.equal(options.headers.Authorization,'Bearer synthetic-new');aiCalls++;
-    return Response.json({kind:'feedback',feedback:{suggestions:['직접 관계를 확인해 보세요.']}});
+    return Response.json({kind:'feedback',feedback:{overall:'직접 관계를 잘 잡았습니다.',criteria:[{name:'핵심 내용 포함',reason:'r'},{name:'변형/자기 언어화',reason:'r'},{name:'정확성',reason:'r'},{name:'구조/응집성',reason:'r'}],strengths:[{quote:'q',comment:'c'}],improvements:[{quote:'q',direction:'d'}],missingIdea:''}});
   };
   const t=panelFixture(assemble({config:{...config,googleLoginEnabled:true,feedbackTestEnabled:true}}).files,fetchImpl),e=t.elements;
   t.context.chrome.identity.launchWebAuthFlow=async({url})=>{const callback=new URL(new URL(url).searchParams.get('redirect_to'));callback.searchParams.set('code','synthetic-code');return callback.href;};

@@ -81,13 +81,16 @@ test('피드백은 기본 비활성이고 저장된 본인 제출이 없으면 �
  assert.equal((await missing.call(null,{path:'/feedback',body})).status,401);
 });
 
+const FEEDBACK_REPLY={analysis:{topic:'가상 주제',keyIdeas:['가','나','다','라','마'],coverage:['포함','포함','부분 포함','누락','포함']},overall:'자기 말로 정리했습니다.',criteria:[{name:'핵심 내용 포함',reason:'아마 대부분 담은 것 같습니다.'},{name:'변형/자기 언어화',reason:'재진술했습니다.'},{name:'정확성',reason:'왜곡이 없습니다.'},{name:'구조/응집성',reason:'순서가 자연스럽습니다.'}],strengths:[{quote:'가상 재정리',comment:'핵심을 묶었습니다.'}],improvements:[{quote:'재정리',direction:'근거와 주장의 관계를 드러내 보세요.'}],missingIdea:'라'};
 test('피드백은 저장된 본인 답안만 공급자에게 보내고 제한된 형식을 반환한다',async()=>{
  const row={structure_type:'claim',main_idea:'가상 중심',primary_text:'가상 주장',support_text:'가상 근거',relation_text:'가상 관계',retell:'가상 재정리'};
- let sent;const providerFetch=async(_url,init)=>{sent=JSON.parse(init.body);return Response.json({choices:[{finish_reason:'stop',message:{content:JSON.stringify({suggestions:['근거의 연결을 확인해 보세요.']})}}]});};
+ let sent;const providerFetch=async(_url,init)=>{sent=JSON.parse(init.body);return Response.json({choices:[{finish_reason:'stop',message:{content:JSON.stringify(FEEDBACK_REPLY)}}]});};
  const {call}=setup({envOverride:{PILOT_FEEDBACK_ENABLED:'true'},rows:[row],providerFetch});
  const r=await call('tokA',{path:'/feedback',body:JSON.stringify({article:'자체 작성 가상 글',sessionId:UID_A})});
- assert.equal(r.status,200);assert.equal((await r.json()).kind,'feedback');
- assert.deepEqual(JSON.parse(sent.messages[1].content),{article:'자체 작성 가상 글',submission:row});
+ assert.equal(r.status,200);const out=await r.json();assert.equal(out.kind,'feedback');
+ assert.equal(out.feedback.analysis,undefined,'원문 핵심 목록은 학습자에게 보내지 않는다');assert.equal(out.feedback.criteria.length,4);
+ assert.deepEqual(JSON.parse(sent.messages[1].content),{article:'자체 작성 가상 글',summary:'가상 재정리',reference:{structureType:'claim',mainIdea:'가상 중심',primary:'가상 주장',support:'가상 근거',relation:'가상 관계'}});
+ assert.equal(sent.max_tokens,2000);
 });
 
 test('실제 글 경로는 기본 비활성이고 비활성 시 인증·공급자를 호출하지 않는다', async () => {

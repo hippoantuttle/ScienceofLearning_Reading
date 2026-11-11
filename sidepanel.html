@@ -7,6 +7,7 @@
   <link rel="stylesheet" href="sidepanel.css">
   <script src="panel-ui.js" defer></script>
   <script src="worksheet.js" defer></script>
+  <script src="pdf-worksheet.js" defer></script>
   <script src="ai-client.js" defer></script>
   <!-- @development-start -->
   <script src="local-preview.js" defer></script>
@@ -75,6 +76,7 @@
       <h3>1. 글 연결</h3>
       <p class="hint">지금 보고 있는 탭의 글을 이 훈련에 연결합니다.</p>
       <button id="analyze" type="button" class="primary" aria-describedby="connect-status">현재 글 연결</button>
+      <p class="hint">PDF는 <button id="open-pdf-viewer" type="button" class="quiet">PDF 뷰어 열기</button>에서 파일을 열고 추출을 확인한 뒤, 그 탭에서 「현재 글 연결」을 누르세요.</p>
       <p id="connect-status" role="status" aria-live="polite"></p>
     </div>
     <div id="article-result" hidden>
@@ -136,17 +138,35 @@
     <h2 id="step2" tabindex="-1">읽기·구조화</h2>
     <p>원문을 보며 직접 작성하세요. 이 틀은 빈 예시이며 글 유형의 자동 판정이 아닙니다.</p>
     <button id="back" type="button" class="quiet">읽기 준비로 돌아가기</button>
+    <section id="pdf-nav" class="pdf-nav" hidden aria-label="PDF 단위 이동">
+      <p><strong id="pdf-nav-label"></strong> · 작성 완료 <span id="pdf-nav-progress"></span></p>
+      <p class="hint">PDF 뷰어에서 강조된 단위를 읽고 그 단위의 중심 생각만 작성하세요. 모든 단위를 마치면 문서 전체 구조도를 작성하고 한 번 다시 말합니다. 뷰어의 번호표를 눌러도 이동합니다.</p>
+      <label for="pdf-nav-select">단위 선택</label><select id="pdf-nav-select"></select>
+      <button id="pdf-prev" type="button">이전 단위</button>
+      <button id="pdf-next" type="button" class="primary">다음 단위</button>
+      <button id="pdf-to-structure" type="button" class="primary">모든 단위 완료 · 문서 구조도 작성</button>
+      <p id="pdf-nav-status" role="status" aria-live="polite"></p>
+    </section>
+    <section id="pdf-structure-intro" hidden aria-label="문서 전체 구조도 안내">
+      <p class="hint">모든 단위의 중심 생각을 작성했습니다. 원문을 다시 보며 문서 전체의 구조도를 작성하세요.</p>
+      <details><summary>내가 쓴 단위별 중심 생각</summary><pre id="pdf-units-summary"></pre></details>
+      <button id="pdf-back-units" type="button" class="quiet">단위별 중심 생각으로 돌아가기</button>
+    </section>
     <form id="worksheet" novalidate>
-      <label for="main-idea">중심 생각</label><textarea id="main-idea" rows="3" required aria-describedby="main-idea-error"></textarea><p id="main-idea-error" class="field-error"></p>
+      <div id="main-idea-block"><label id="main-idea-label" for="main-idea">중심 생각</label><textarea id="main-idea" rows="3" required aria-describedby="main-idea-error"></textarea><p id="main-idea-error" class="field-error"></p></div>
+      <div id="structure-block">
       <label for="structure">구조도 유형 (직접 선택)</label><select id="structure"><option value="claim">주장–근거</option><option value="cause">원인–결과</option><option value="problem">문제–해결</option></select>
       <div class="structure-map" role="group" aria-label="직접 작성하는 구조도">
         <div class="structure-node"><label id="primary-label" for="primary">핵심 정보 · 주장</label><textarea id="primary" rows="3" required aria-describedby="primary-error"></textarea><p id="primary-error" class="field-error"></p></div>
         <div class="structure-link"><span aria-hidden="true">↓</span><label for="relation">관계 설명</label><textarea id="relation" rows="3" required aria-describedby="relation-error"></textarea><p id="relation-error" class="field-error"></p><span aria-hidden="true">↓</span></div>
         <div class="structure-node"><label id="support-label" for="support">보조 정보 · 근거</label><textarea id="support" rows="3" required aria-describedby="support-error"></textarea><p id="support-error" class="field-error"></p></div>
       </div>
+      </div>
       <div id="form-error" role="alert"></div>
+      <div id="retell-submit-block">
       <button id="to-retell" type="submit" class="primary" aria-describedby="form-error retell-start-note">작성 확인 후 다시 말하기로</button>
       <p id="retell-start-note" class="hint">필수 항목을 확인하고 원문을 가립니다. 내용의 정오는 평가하지 않습니다.</p>
+      </div>
     </form>
   </section>
 

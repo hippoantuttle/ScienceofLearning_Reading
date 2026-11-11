@@ -5,7 +5,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const vm = require('node:vm');
-const {RUNTIME, validateConfig, stripDevelopment, makeZip, assemble, build} = require('../scripts/build-extension.cjs');
+const {RUNTIME, readVendor, validateConfig, stripDevelopment, makeZip, assemble, build} = require('../scripts/build-extension.cjs');
 const config = {authUrl:'https://synthetic.supabase.co', publicKey:'sb_publishable_synthetic', endpoint:'https://submit.example.org/submissions', aiEndpoint:'https://ai.example.org/recommend', articleTestEnabled:false, feedbackTestEnabled:false};
 
 test('공개 설정은 비밀키·사용자 JWT·로컬 주소·실험 설정을 거부한다', () => {
@@ -28,16 +28,22 @@ test('설치본은 허용 목록만 읽고 개발 UI·주소·로컬 설정·서
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'reading-build-source-'));
   try {
     for (const file of [...RUNTIME, 'manifest.json']) fs.copyFileSync(path.join(__dirname, '..', file), path.join(root, file));
+    fs.cpSync(path.join(__dirname, '..', 'vendor', 'pdfjs'), path.join(root, 'vendor', 'pdfjs'), {recursive:true});
     // Synthetic sentinels: any automatic copying of unlisted files is a regression.
-    for (const file of ['submission-config.local.js', '.env', '.dev.vars', 'private.pem', 'participant.response.json']) fs.writeFileSync(path.join(root, file), 'SYNTHETIC_EXCLUDED_SENTINEL');
+    for (const file of ['submission-config.local.js', '.env', '.dev.vars', 'private.pem', 'participant.response.json', 'vendor/pdfjs/unlisted.mjs']) fs.writeFileSync(path.join(root, file), 'SYNTHETIC_EXCLUDED_SENTINEL');
     const result = assemble({root, config});
-    assert.deepEqual(Object.keys(result.files).sort(), [...RUNTIME, 'manifest.json', 'submission-config.js'].sort());
+    const vendorNames = Object.keys(readVendor(root).files);
+    assert.ok(vendorNames.includes('vendor/pdfjs/pdf.min.mjs') && vendorNames.some(name => name.startsWith('vendor/pdfjs/cmaps/')));
+    assert.deepEqual(Object.keys(result.files).sort(), [...RUNTIME, ...vendorNames, 'manifest.json', 'submission-config.js'].sort());
     const all = Object.values(result.files).map(b => b.toString()).join('\n');
     assert.doesNotMatch(all, /SYNTHETIC_EXCLUDED_SENTINEL|http:\/\/127\.0\.0\.1|submission-config\.local|requestMock|allowRepeatedRecommendations|@development-/);
     assert.doesNotMatch(result.files['sidepanel.html'].toString(), /dev-only|mock-token|local-preview|synthetic-submit/);
     assert.deepEqual(result.manifest.host_permissions, ['https://synthetic.supabase.co/*', 'https://submit.example.org/*', 'https://ai.example.org/*']);
     assert.equal(result.extensionId, 'jenapgoakhnmlmjcdnkfakkkgjobbfbb');
-    assert.match(result.manifest.content_security_policy.extension_pages, /connect-src https:\/\/synthetic.supabase.co https:\/\/submit.example.org https:\/\/ai.example.org;/);
+    assert.match(result.manifest.content_security_policy.extension_pages, /connect-src 'self' https:\/\/synthetic.supabase.co https:\/\/submit.example.org https:\/\/ai.example.org;/);
+    fs.appendFileSync(path.join(root, 'vendor', 'pdfjs', 'pdf.min.mjs'), '\n// tampered');
+    assert.throws(() => assemble({root, config}), /vendor 해시 불일치/);
+    fs.cpSync(path.join(__dirname, '..', 'vendor', 'pdfjs', 'pdf.min.mjs'), path.join(root, 'vendor', 'pdfjs', 'pdf.min.mjs'));
     assert.ok(makeZip(result.files).equals(makeZip(assemble({root, config}).files)));
     fs.appendFileSync(path.join(root, 'background.js'), '\nconst forbidden = "sb_secret_SYNTHETIC_FOR_BUILD_TEST";');
     assert.throws(() => assemble({root, config}), /비밀값/);
@@ -47,7 +53,7 @@ test('설치본은 허용 목록만 읽고 개발 UI·주소·로컬 설정·서
 test('검토 전용 산출물은 네트워크 권한과 연결을 차단하며 개발 영역 경계 오류를 거절한다', () => {
   const result = assemble({reviewOnly:true});
   assert.deepEqual(result.manifest.host_permissions, []);
-  assert.match(result.manifest.content_security_policy.extension_pages, /connect-src 'none'/);
+  assert.match(result.manifest.content_security_policy.extension_pages, /connect-src 'self';/);
   assert.match(result.files['submission-config.js'].toString(), /"authUrl":""/);
   assert.match(result.manifest.name, /검토 전용/);
   assert.throws(() => assemble({reviewOnly:true, config}));
@@ -119,7 +125,8 @@ test('빌드는 기존 경로를 덮어쓰지 않으며 검토본임을 보고�
   try {
     assert.match(report.mode, /review-only/); assert.equal(report.chromeVerified,false); assert.equal(report.remoteVerified,false);
     assert.ok(fs.existsSync(path.join(destination, 'extension.zip')));
-    assert.equal(report.runtimeFiles.length, RUNTIME.length+2);
+    assert.equal(report.runtimeFiles.length, RUNTIME.length+2+Object.keys(readVendor(path.join(__dirname,'..')).files).length);
+    assert.ok(fs.existsSync(path.join(destination, 'extension', 'vendor', 'pdfjs', 'pdf.worker.min.mjs')));
     assert.throws(() => build({reviewOnly:true, label}));
     assert.throws(() => build({reviewOnly:true, label:'../escape'}));
   } finally { fs.rmSync(destination, {recursive:true, force:true}); }

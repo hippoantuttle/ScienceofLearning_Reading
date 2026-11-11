@@ -1,0 +1,41 @@
+:root { color-scheme: light; --ink: #1d232b; --muted: #5b6573; --line: #d7dce3; --accent: #1f5fbf; --bg: #e9ecf0; }
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+html, body { height: 100%; }
+body { margin: 0; display: flex; flex-direction: column; font: 15px/1.5 system-ui, -apple-system, "Malgun Gothic", sans-serif; color: var(--ink); background: var(--bg); }
+.toolbar { flex: none; background: #fff; border-bottom: 1px solid var(--line); padding: 8px 16px; }
+.row { display: flex; flex-wrap: wrap; gap: 6px 12px; align-items: center; margin: 2px 0; }
+.group { display: inline-flex; gap: 4px; align-items: center; }
+h1 { font-size: 1.05rem; margin: 0 8px 0 0; }
+input[type=number] { width: 4.5em; }
+#page-number { width: 4em; }
+#find-input { width: 12em; }
+.hint { color: var(--muted); font-size: .88rem; margin: 0; flex: 1 1 320px; }
+#viewer-status { margin: 0; }
+#viewer-status[data-tone=error] { color: #a1260d; }
+button, select, input { font: inherit; }
+button { padding: 4px 10px; border: 1px solid var(--line); border-radius: 6px; background: #fff; cursor: pointer; }
+button:disabled { opacity: .5; cursor: not-allowed; }
+button.primary { background: var(--accent); color: #fff; border-color: var(--accent); }
+button.quiet { background: transparent; }
+:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.designate { background: #f3f6fb; border-radius: 6px; padding: 6px 8px; }
+#viewer-area { flex: 1; position: relative; min-height: 0; }
+#viewerContainer { position: absolute; inset: 0; overflow: auto; }
+.mask { position: absolute; inset: 16px; background: #1e1e1e; color: #fff; border-radius: 8px; display: flex; align-items: center; justify-content: center; text-align: center; padding: 16px; font-size: 1.1rem; }
+.mask[hidden] { display: none; }
+
+/* 단위 지정 레이어: PDF.js 쪽 위에 겹친다. */
+.unit-layer { position: absolute; inset: 0; pointer-events: none; z-index: 20; }
+.unit-block { position: absolute; pointer-events: auto; padding: 0; margin: 0; background: transparent; border: 2px dashed rgba(31, 95, 191, .35); border-radius: 3px; cursor: pointer; }
+.unit-block:hover { background: rgba(31, 95, 191, .06); }
+.unit-block.heading { border-color: rgba(110, 110, 110, .35); }
+.unit-block.selected { border: 2px solid var(--accent); background: rgba(31, 95, 191, .08); }
+.unit-badge { position: absolute; left: -2px; top: -1.5em; font: 600 12px/1.4 system-ui, sans-serif; color: #fff; background: var(--accent); border: 0; border-radius: 3px; padding: 0 5px; white-space: nowrap; pointer-events: auto; cursor: pointer; }
+.unit-badge.done { background: #2e7d32; }
+body.reading .unit-block { pointer-events: none; border-color: transparent; background: transparent; cursor: default; }
+body.reading .unit-block.selected { border: 0; border-left: 4px solid rgba(31, 95, 191, .55); }
+body.reading .unit-block.current { background: rgba(255, 214, 0, .22); border-left-color: #d9a300; }
+body.reading .unit-block:not(.selected) .unit-badge { display: none; }
+@media (max-width: 700px) { .toolbar { padding: 8px 12px; } .hint { flex-basis: 100%; } }

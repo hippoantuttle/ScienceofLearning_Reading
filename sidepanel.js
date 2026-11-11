@@ -6,6 +6,7 @@ const analyzeButton = document.getElementById('analyze');
 const resultElement = document.getElementById('article-result');
 let articleSession = null; // In-memory only; bind future actions to this tab and URL.
 let blindPort = null;
+let pdfWorksheet = null; // TASK-019 v3: PDF 세션의 단위별 중심 생각·단계. 패널 메모리에만 둔다.
 let rechecked = false;
 let operationBusy = false;
 let allowLocalRepeatedRecommendations = false;
@@ -43,6 +44,125 @@ function tabTitleForRecord(value) {
   return title;
 }
 
+// TASK-019: 확장 전용 PDF 뷰어 탭은 content.js 대신 확장 메시지로 같은 계약을 사용한다.
+const PDF_VIEWER_PAGE = 'pdf-viewer.html';
+function isPdfViewerUrl(value) {
+  try { const url = new URL(value), base = new URL(chrome.runtime.getURL(PDF_VIEWER_PAGE)); return url.origin === base.origin && url.pathname === base.pathname; }
+  catch { return false; }
+}
+function articleMessage(session, message) {
+  return session?.kind === 'pdf'
+    ? chrome.runtime.sendMessage({...message, target:'pdf-viewer', tabId:session.tabId})
+    : chrome.tabs.sendMessage(session.tabId, message);
+}
+function articlePort(session) {
+  return session?.kind === 'pdf'
+    ? chrome.runtime.connect({name:'reading-retell:' + session.tabId})
+    : chrome.tabs.connect(session.tabId, {name:'reading-retell'});
+}
+function setHidden(id, hidden) { const element = document.getElementById(id); if (element) element.hidden = hidden; }
+// TASK-019 v3 화면 단계: units(단위별 중심 생각) → structure(문서 전체 구조도·Retell 이동). 웹 기사는 기존 화면 그대로.
+function applyPdfPhase() {
+  const phase = pdfWorksheet ? pdfWorksheet.phase() : null;
+  setHidden('pdf-nav', phase !== 'units');
+  setHidden('pdf-structure-intro', phase !== 'structure');
+  setHidden('main-idea-block', phase === 'structure');
+  setHidden('structure-block', phase === 'units');
+  setHidden('retell-submit-block', phase === 'units');
+  const label = document.getElementById('main-idea-label');
+  if (label) label.textContent = phase === 'units' ? `${pdfWorksheet.label()}의 중심 생각` : '중심 생각';
+  if (phase === 'structure') { const summary = document.getElementById('pdf-units-summary'); if (summary) summary.textContent = pdfWorksheet.mainIdea(); }
+}
+function resetPdfMode() {
+  pdfWorksheet = null;
+  applyPdfPhase();
+  const status = document.getElementById('pdf-nav-status'); if (status) status.textContent = '';
+}
+function savePdfCurrent() { if (pdfWorksheet?.phase() === 'units') pdfWorksheet.setMain(document.getElementById('main-idea').value); }
+function pdfStructureValues() {
+  return {structure:document.getElementById('structure').value, primary:document.getElementById('primary').value, support:document.getElementById('support').value, relation:document.getElementById('relation').value};
+}
+function sendPdfUnitStatus() {
+  if (!pdfWorksheet || articleSession?.kind !== 'pdf') return;
+  Promise.resolve(articleMessage(articleSession, {action:'UNIT_STATUS', completed:pdfWorksheet.completed(), token:articleSession.token})).catch(() => {});
+}
+function renderPdfNav() {
+  if (!pdfWorksheet) return;
+  const index = pdfWorksheet.index(), count = pdfWorksheet.count();
+  document.getElementById('pdf-nav-label').textContent = `${pdfWorksheet.label()} / 전체 ${count}단위`;
+  document.getElementById('pdf-nav-progress').textContent = `${pdfWorksheet.completedCount()}/${count}`;
+  const select = document.getElementById('pdf-nav-select');
+  if (select.options.length !== count) {
+    select.replaceChildren(...Array.from({length:count}, (_, at) => { const option = document.createElement('option'); option.value = String(at); return option; }));
+  }
+  Array.from(select.options).forEach((option, at) => { option.textContent = pdfWorksheet.label(at) + (pdfWorksheet.isComplete(at) ? ' · 작성함' : ''); });
+  select.value = String(index);
+  document.getElementById('pdf-prev').disabled = index === 0;
+  document.getElementById('pdf-next').disabled = index === count - 1;
+  applyPdfPhase();
+}
+async function gotoPdfUnit(next) {
+  if (!pdfWorksheet) return;
+  savePdfCurrent();
+  pdfWorksheet.go(next);
+  document.getElementById('main-idea').value = pdfWorksheet.getMain();
+  clearWorksheetErrors(); renderPdfNav(); sendPdfUnitStatus();
+  const status = document.getElementById('pdf-nav-status'); status.textContent = '';
+  try {
+    const response = await articleMessage(articleSession, {action:'FOCUS_PARAGRAPH', index:next, token:articleSession?.token});
+    if (response?.status !== 'success') throw new Error(response?.message);
+  } catch (error) { showStatus(error?.message || 'PDF 뷰어에서 단위를 표시하지 못했습니다. 뷰어 탭을 확인하세요.', true, status); }
+}
+// 제출 패널이 사용하는 답안 값. PDF는 단위별 중심 생각을 [단위 n] 표기로 묶고 구조도는 문서 전체 값 하나다.
+function worksheetSubmissionValues() {
+  if (articleSession?.kind === 'pdf' && pdfWorksheet) return pdfWorksheet.serialize(pdfStructureValues());
+  const v = id => document.getElementById(id).value;
+  return {structureType:v('structure'), mainIdea:v('main-idea'), primary:v('primary'), support:v('support'), relation:v('relation')};
+}
+document.getElementById('open-pdf-viewer')?.addEventListener('click', async () => {
+  try {
+    const panelWindow = await chrome.windows.getCurrent();
+    await chrome.tabs.create({url:chrome.runtime.getURL(PDF_VIEWER_PAGE), windowId:panelWindow.id});
+    showStatus('새 탭에서 PDF 파일을 열고 단위를 지정한 뒤 「현재 글 연결」을 누르세요.', false, document.getElementById('connect-status'));
+  } catch { showStatus('PDF 뷰어를 열지 못했습니다.', true, document.getElementById('connect-status')); }
+});
+document.getElementById('pdf-prev')?.addEventListener('click', () => { if (pdfWorksheet && pdfWorksheet.index() > 0) gotoPdfUnit(pdfWorksheet.index() - 1); });
+document.getElementById('pdf-next')?.addEventListener('click', () => { if (pdfWorksheet && pdfWorksheet.index() < pdfWorksheet.count() - 1) gotoPdfUnit(pdfWorksheet.index() + 1).then(() => document.getElementById('main-idea').focus()); });
+document.getElementById('pdf-nav-select')?.addEventListener('change', event => { const next = Number(event.target.value); if (pdfWorksheet && Number.isInteger(next)) gotoPdfUnit(next); });
+document.getElementById('main-idea')?.addEventListener?.('change', () => { if (pdfWorksheet?.phase() === 'units') { savePdfCurrent(); renderPdfNav(); sendPdfUnitStatus(); } });
+document.getElementById('pdf-to-structure')?.addEventListener('click', async () => {
+  if (!pdfWorksheet) return;
+  savePdfCurrent();
+  const missing = pdfWorksheet.firstIncomplete();
+  if (missing !== null) {
+    if (missing !== pdfWorksheet.index()) await gotoPdfUnit(missing);
+    showStatus(`${pdfWorksheet.label()}의 중심 생각을 아직 작성하지 않았습니다. 모든 단위를 작성해야 구조도로 넘어갑니다.`, true, document.getElementById('pdf-nav-status'));
+    document.getElementById('main-idea').focus(); return;
+  }
+  try { pdfWorksheet.toStructure(); }
+  catch (error) { showStatus(error.message, true, document.getElementById('pdf-nav-status')); return; }
+  sendPdfUnitStatus(); applyPdfPhase(); updateStructureLabels();
+  document.getElementById('structure').focus();
+  showStatus('모든 단위의 중심 생각을 작성했습니다. 문서 전체 구조도를 작성한 뒤 다시 말하기로 이동하세요.');
+});
+document.getElementById('pdf-back-units')?.addEventListener('click', () => {
+  if (!pdfWorksheet) return;
+  pdfWorksheet.toUnits();
+  document.getElementById('main-idea').value = pdfWorksheet.getMain();
+  renderPdfNav();
+  document.getElementById('main-idea').focus();
+});
+// 뷰어의 단위 번호표 → 패널 이동. 연결 토큰이 같은 패널만 응답한다(다른 창의 패널은 조용히 무시).
+chrome.runtime?.onMessage?.addListener?.((message, sender, sendResponse) => {
+  if (message?.target !== 'side-panel' || message.action !== 'GOTO_UNIT') return;
+  if (!pdfWorksheet || articleSession?.kind !== 'pdf' || message.token !== articleSession.token || (sender?.tab && sender.tab.id !== articleSession.tabId)) return;
+  if (document.getElementById('reading').hidden) { sendResponse({status:'error', message:'읽기·구조화 단계에서만 단위를 이동할 수 있습니다.'}); return; }
+  if (!Number.isInteger(message.index) || message.index < 0 || message.index >= pdfWorksheet.count()) { sendResponse({status:'error', message:'단위 번호 오류'}); return; }
+  if (pdfWorksheet.phase() === 'structure') pdfWorksheet.toUnits();
+  gotoPdfUnit(message.index);
+  sendResponse({status:'success'});
+});
+
 analyzeButton.addEventListener('click', async () => {
   if (operationBusy || analyzeButton.disabled) return;
   if (articleSession && !confirm('훈련 종료 후 작성 내용을 지우고 새 시도를 시작할까요? 같은 글도 새 시도이며 이전 인출 수행과 구분됩니다.')) return;
@@ -67,6 +187,7 @@ analyzeButton.addEventListener('click', async () => {
   for(const id of ['submission-article-title','submission-source-url']){const el=document.getElementById(id);if(el)el.value='';}
   document.getElementById('worksheet').reset();
   clearWorksheetErrors();
+  resetPdfMode();
   document.getElementById('reading').hidden = true;
   document.getElementById('preparation').hidden = false;
   updateStructureLabels();
@@ -79,14 +200,28 @@ analyzeButton.addEventListener('click', async () => {
     if (!Number.isInteger(panelWindow?.id) || panelWindow.id < 0) throw new Error('패널이 속한 창을 확인할 수 없습니다. 다시 열어 주세요.');
     const [tab] = await chrome.tabs.query({ active: true, windowId: panelWindow.id });
     if (!tab || tab.id == null || tab.windowId !== panelWindow.id) throw new Error('활성 탭을 찾을 수 없습니다. 기사 창에서 확장 프로그램을 다시 여세요.');
-    if (!tab.url) throw new Error('탭 주소를 확인할 수 없습니다. 기사 탭에서 확장 프로그램 아이콘을 다시 눌러주세요.');
-    let url;
-    try { url = new URL(tab.url); } catch { throw new Error('페이지 주소를 확인할 수 없습니다.'); }
-    if (!['http:', 'https:'].includes(url.protocol) || ['chrome.google.com', 'chromewebstore.google.com'].includes(url.hostname)) {
-      throw new Error('이 페이지에는 접근할 수 없습니다. 일반 웹 기사에서 다시 시도하세요.');
+    let viewer = isPdfViewerUrl(tab.url);
+    let response;
+    if (!viewer && !tab.url) {
+      // 탭 주소가 보이지 않는 경우에도 이 확장의 PDF 뷰어인지 확인한다(뷰어는 자기 탭 id일 때만 응답).
+      try { const probe = await articleMessage({kind:'pdf', tabId:tab.id}, { action: 'EXTRACT_ARTICLE' }); if (probe?.kind === 'pdf' || probe?.code === 'NOT_CONFIRMED') { viewer = true; response = probe; } } catch { /* 뷰어 아님 */ }
     }
-    await chrome.scripting.executeScript({ target: { tabId: tab.id }, files: ['content.js'] });
-    const response = await chrome.tabs.sendMessage(tab.id, { action: 'EXTRACT_ARTICLE' });
+    if (viewer && response) {
+      if (response.status === 'success' && (!Array.isArray(response.paragraphs) || !response.paragraphs.length)) throw new Error('PDF 뷰어 응답을 확인하지 못했습니다.');
+    } else if (viewer) {
+      response = await articleMessage({kind:'pdf', tabId:tab.id}, { action: 'EXTRACT_ARTICLE' });
+      if (response?.status === 'success' && (response.kind !== 'pdf' || !Array.isArray(response.paragraphs) || !response.paragraphs.length)) throw new Error('PDF 뷰어 응답을 확인하지 못했습니다.');
+    } else {
+      if (!tab.url) throw new Error('탭 주소를 확인할 수 없습니다. 기사 탭에서 확장 프로그램 아이콘을 다시 눌러주세요.');
+      let url;
+      try { url = new URL(tab.url); } catch { throw new Error('페이지 주소를 확인할 수 없습니다.'); }
+      if (url.protocol === 'file:' || /\.pdf$/i.test(url.pathname)) throw new Error('PDF는 「PDF 뷰어 열기」로 파일을 열어 연결하세요.');
+      if (!['http:', 'https:'].includes(url.protocol) || ['chrome.google.com', 'chromewebstore.google.com'].includes(url.hostname)) {
+        throw new Error('이 페이지에는 접근할 수 없습니다. 일반 웹 기사에서 다시 시도하세요.');
+      }
+      await chrome.scripting.executeScript({ target: { tabId: tab.id }, files: ['content.js'] });
+      response = await chrome.tabs.sendMessage(tab.id, { action: 'EXTRACT_ARTICLE' });
+    }
     const current = await chrome.tabs.get(tab.id);
     if (current.url !== tab.url) throw new Error('페이지가 변경되었습니다. 기사에서 다시 분석하세요.');
     if (!response || response.status !== 'success') throw new Error(response?.message || '본문을 확인하지 못했습니다. 다시 시도하세요.');
@@ -94,11 +229,16 @@ analyzeButton.addEventListener('click', async () => {
     document.getElementById('review-view').hidden = true;
     document.getElementById('retell-view').hidden = true;
     rechecked = false;
-    articleSession = { tabId: tab.id, windowId: tab.windowId, url: tab.url, text: response.text, token: response.token, fallback: response.fallback };
+    articleSession = { kind: viewer ? 'pdf' : 'web', tabId: tab.id, windowId: tab.windowId, url: tab.url, text: response.text, token: response.token, fallback: response.fallback };
     const titleInput = document.getElementById('submission-article-title');
-    if (titleInput) titleInput.value = tabTitleForRecord(current.title);
+    // PDF는 파일명을 자동으로 채우지 않는다(TASK-019). 쪽 범위만 후보로 둔다.
+    if (titleInput) titleInput.value = tabTitleForRecord(viewer ? response.title : current.title);
+    if (viewer) {
+      pdfWorksheet = PdfWorksheet.create(response.paragraphs);
+      renderPdfNav();
+    }
     document.getElementById('counts').textContent = `문자 수: ${response.charCount} · 단어 수(공백 기준): ${response.wordCount}`;
-    document.getElementById('fallback').textContent = response.fallback ? '주의: 기사 영역을 찾지 못해 페이지 전체 텍스트를 사용했습니다.' : '';
+    document.getElementById('fallback').textContent = response.fallback ? '주의: 기사 영역을 찾지 못해 페이지 전체 텍스트를 사용했습니다.' : (viewer ? `PDF 단위 ${response.paragraphs.length}개를 연결했습니다. PDF 읽기는 AI 추천·피드백 없이 진행합니다.` : '');
     resultElement.hidden = false;
     // @development-start
     document.getElementById('mock-recommend').disabled = false;
@@ -107,7 +247,7 @@ analyzeButton.addEventListener('click', async () => {
     showStatus('', false, document.getElementById('connect-status'));
     showStatus('본문을 연결했습니다. 원문을 직접 읽고 정리하세요.');
   } catch (error) {
-    articleSession = null;
+    articleSession = null; resetPdfMode();
     showStatus(error?.message?.startsWith('Cannot access') || error?.message?.includes('Extensions gallery') || error?.message?.includes('No tab with id') || error?.message?.includes('Receiving end')
       ? '이 페이지에 접근할 수 없거나 탭이 변경되었습니다. 일반 기사 페이지에서 다시 시도하세요.'
       : (error?.message || '본문을 확인하지 못했습니다. 일반 기사 페이지에서 다시 시도하세요.'), true, document.getElementById('connect-status'));
@@ -198,19 +338,26 @@ async function restoreBlind(target) {
   }
   if (!articleSession) return false;
   try {
-    const response = await chrome.tabs.sendMessage(articleSession.tabId, {action:'TOGGLE_BLUR',enabled:false,token:articleSession.token});
+    const response = await articleMessage(articleSession, {action:'TOGGLE_BLUR',enabled:false,token:articleSession.token});
     if (response?.status !== 'success' || response.enabled !== false) throw new Error();
     return true;
-  } catch { showStatus('원문 복원 여부를 확인할 수 없습니다. 기사 탭을 새로고침하세요.',true,target); return false; }
+  } catch { showStatus(articleSession?.kind === 'pdf' ? '원문 복원 여부를 확인할 수 없습니다. PDF 뷰어 탭을 확인하세요.' : '원문 복원 여부를 확인할 수 없습니다. 기사 탭을 새로고침하세요.',true,target); return false; }
   finally { if (blindPort) { const port = blindPort; blindPort = null; port.disconnect(); } }
 }
 function valuesForWorksheet() {
+  if (pdfWorksheet) { let main = ''; try { main = pdfWorksheet.mainIdea(); } catch { main = ''; } return {main, primary:document.getElementById('primary').value, support:document.getElementById('support').value, relation:document.getElementById('relation').value}; }
   return {main:document.getElementById('main-idea').value, primary:document.getElementById('primary').value, support:document.getElementById('support').value, relation:document.getElementById('relation').value};
 }
 async function enterRetell(event) {
   event?.preventDefault?.();
   if (operationBusy) return;
   clearWorksheetErrors();
+  if (pdfWorksheet) {
+    savePdfCurrent();
+    if (pdfWorksheet.phase() !== 'structure') { showStatus('모든 단위의 중심 생각을 작성하고 문서 구조도 단계로 넘어가세요.', true, document.getElementById('pdf-nav-status')); return; }
+    try { pdfWorksheet.serialize(pdfStructureValues()); }
+    catch (error) { showStatus(error.message, true, document.getElementById('form-error')); return; }
+  }
   const validation=Worksheet.validate(valuesForWorksheet());
   if (!validation.valid) {
     const ids={main:'main-idea',primary:'primary',support:'support',relation:'relation'};
@@ -225,7 +372,7 @@ async function enterRetell(event) {
   operationBusy = true;
   try {
     await validateBoundTab();
-    blindPort = chrome.tabs.connect(articleSession.tabId,{name:'reading-retell'});
+    blindPort = articlePort(articleSession);
     const connectedPort = blindPort;
     connectedPort.onDisconnect.addListener(() => {
       if (blindPort !== connectedPort) return;
@@ -234,7 +381,7 @@ async function enterRetell(event) {
       document.getElementById('reading').hidden = false;
       showStatus('글 연결이 끊어졌습니다. 원문을 확인하고 다시 연결하세요.',true,document.getElementById('form-error'));
     });
-    const result = await chrome.tabs.sendMessage(articleSession.tabId,{action:'TOGGLE_BLUR',enabled:true,token:articleSession.token});
+    const result = await articleMessage(articleSession,{action:'TOGGLE_BLUR',enabled:true,token:articleSession.token});
     if (result?.status !== 'success' || result.enabled !== true) throw new Error(result?.message || '원문을 가리지 못했습니다.');
     await validateBoundTab();
     document.getElementById('reading').hidden = true;
@@ -262,15 +409,19 @@ document.getElementById('to-review').addEventListener('click',async () => {
   if (!retell.trim()) { showStatus('다시 말하기를 작성하세요.',true,retellError);document.getElementById('retell-input').setAttribute?.('aria-invalid','true'); document.getElementById('retell-input').focus(); return; }
   operationBusy=true;
   try{if (!await restoreBlind()) return;}finally{operationBusy=false;}
-  const values = valuesForWorksheet();
-  for (const [id,value] of Object.entries({'summary-main':values.main,'summary-primary':values.primary,'summary-support':values.support,'summary-relation':values.relation,'summary-retell':retell,'summary-type':document.getElementById('structure').selectedOptions[0].textContent})) document.getElementById(id).textContent = value;
+  let values = valuesForWorksheet(), typeText = document.getElementById('structure').selectedOptions[0].textContent;
+  if (pdfWorksheet) {
+    try { const packed = worksheetSubmissionValues(); values = {main:packed.mainIdea, primary:packed.primary, support:packed.support, relation:packed.relation}; typeText = '문서 전체 · ' + typeText; }
+    catch (error) { showStatus(error.message, true, retellError); return; }
+  }
+  for (const [id,value] of Object.entries({'summary-main':values.main,'summary-primary':values.primary,'summary-support':values.support,'summary-relation':values.relation,'summary-retell':retell,'summary-type':typeText})) document.getElementById(id).textContent = value;
   document.getElementById('retell-view').hidden = true; document.getElementById('review-view').hidden = false; document.getElementById('step4')?.focus();
   showStatus('원문을 복원했습니다. 답안을 확인하고 동의 후 제출하세요.');
 });
 document.getElementById('end-training').addEventListener('click',async () => {
   if(operationBusy || !confirm('훈련을 종료하고 미저장 내용을 삭제할까요?'))return;operationBusy=true;
   try{if (!await restoreBlind()) return;}finally{operationBusy=false;}
-  articleSession=null;rechecked=false;recommendationGate.reset();
+  articleSession=null;rechecked=false;recommendationGate.reset();resetPdfMode();
   if(typeof resetPanelSubmission==='function')resetPanelSubmission();
   if(typeof resetPilotAi==='function')resetPilotAi();
   if(typeof localPreviewReset==='function')localPreviewReset();

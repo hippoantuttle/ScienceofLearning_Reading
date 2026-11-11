@@ -15,11 +15,13 @@ document.getElementById('submission-send').addEventListener('click',async()=>{
   if(!document.getElementById('submission-consent').checked)throw Error('제출 항목을 확인하고 동의해 주세요.');
   let receipt;
   if(flow.hasPending())receipt=await flow.retry();
-  else{const v=id=>document.getElementById(id).value;const includeArticle=document.getElementById('submission-article-consent')?.checked===true;receipt=await flow.submit({structureType:v('structure'),mainIdea:v('main-idea'),primary:v('primary'),support:v('support'),relation:v('relation'),retell:v('retell-input'),reflection:v('reflection'),newWords:v('new-words'),interests:v('interests'),rechecked,...(includeArticle?{articleTitle:v('submission-article-title'),sourceUrl:v('submission-source-url')}:{})});}
+  else{const v=id=>document.getElementById(id).value;const includeArticle=document.getElementById('submission-article-consent')?.checked===true;const answers=typeof worksheetSubmissionValues==='function'?worksheetSubmissionValues():{structureType:v('structure'),mainIdea:v('main-idea'),primary:v('primary'),support:v('support'),relation:v('relation')};receipt=await flow.submit({...answers,retell:v('retell-input'),reflection:v('reflection'),newWords:v('new-words'),interests:v('interests'),rechecked,...(includeArticle?{articleTitle:v('submission-article-title'),sourceUrl:v('submission-source-url')}:{})});}
   if(panelSubmissionFlow!==flow || (typeof articleSession!=='undefined' && articleSession!==submittedSession))return;
   const savedTime=Number.isFinite(Date.parse(receipt.savedAt))?new Date(receipt.savedAt).toLocaleString('ko-KR'):receipt.savedAt;
   status.textContent=`제출한 답안의 저장 및 재조회 확인이 완료되었습니다. 저장 시각: ${savedTime}`;
   globalThis.PanelUI?.tone(status,'success');
+  // TASK-019 v2: PDF 읽기는 피드백·수정 화면 없이 저장·재조회 확인까지만 진행한다.
+  if(submittedSession?.kind==='pdf'){status.textContent+=' PDF 읽기는 피드백 없이 진행합니다. 「내 기록」에서 확인할 수 있습니다.';return;}
   if(typeof feedbackSubmissionReady==='function'&&typeof flow.verifiedSnapshot==='function')feedbackSubmissionReady(flow.verifiedSnapshot(),flow,receipt);
  }catch(e){if(e.status===401 && panelSubmissionFlow===flow)panelExpireAccount();status.textContent=(e.message==='로그인이 필요합니다.'?'상단에서 로그인한 뒤 다시 제출하세요.':(e.message||'제출 실패'))+' 작성 내용은 유지됩니다. 이미 전송을 시작했다면 재시도는 최초 제출 내용으로 진행됩니다.';globalThis.PanelUI?.tone(status,'error');}
  finally{button.disabled=false;}

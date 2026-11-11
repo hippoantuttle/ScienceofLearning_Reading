@@ -12,8 +12,11 @@ const RUNTIME = Object.freeze([
   'record-contract.js', 'record-client.js', 'submission-contract.js',
   'submission-http.js', 'submission-auth.js', 'google-auth.js', 'submission-flow.js',
   'sidepanel.js', 'submission-panel.js', 'pilot-ai-panel.js',
-  'feedback-panel.js', 'records-panel.js', 'account-bar.js', 'panel-shell.js'
+  'feedback-panel.js', 'records-panel.js', 'account-bar.js', 'panel-shell.js',
+  'pdf-worksheet.js', 'pdf-paragraphs.js', 'pdf-units.js', 'pdf-viewer.js', 'pdf-viewer.html', 'pdf-viewer.css'
 ]);
+// TASK-019: 고정 버전 PDF.js. 목록·해시는 vendor/pdfjs/FILES.sha256에 고정하고 불일치 시 빌드를 거부한다.
+const VENDOR_LIST = 'vendor/pdfjs/FILES.sha256';
 const CONFIG_KEYS = ['authUrl', 'publicKey', 'endpoint', 'aiEndpoint', 'articleTestEnabled', 'feedbackTestEnabled'];
 const hash = data => crypto.createHash('sha256').update(data).digest('hex');
 
@@ -126,6 +129,22 @@ function checkSecrets(source, name) {
   }
 }
 
+function readVendor(root) {
+  const listing = readSource(root, VENDOR_LIST), files = {};
+  for (const line of listing.split(/\r?\n/).filter(Boolean)) {
+    const match = /^([0-9a-f]{64}) {2}([A-Za-z0-9_.-]+(?:\/[A-Za-z0-9_.-]+){0,3})$/.exec(line);
+    if (!match || match[2].split('/').some(part => part === '..' || part === '.')) throw Error('vendor 목록 형식 오류');
+    const name = 'vendor/pdfjs/' + match[2], file = path.join(root, name);
+    if (!fs.lstatSync(file).isFile() || fs.lstatSync(file).isSymbolicLink()) throw Error('vendor 일반 파일만 허용: ' + name);
+    const data = fs.readFileSync(file);
+    if (hash(data) !== match[1]) throw Error('vendor 해시 불일치: ' + name);
+    files[name] = data;
+  }
+  for (const required of ['pdf.min.mjs', 'pdf.worker.min.mjs', 'web/pdf_viewer.mjs', 'web/pdf_viewer.css'])
+    if (!files['vendor/pdfjs/' + required]) throw Error('PDF.js 필수 파일 누락: ' + required);
+  return {files, listingHash: hash(listing)};
+}
+
 function assemble({root = ROOT, config, reviewOnly = false} = {}) {
   if (reviewOnly && config) throw Error('검토 전용 빌드에는 원격 설정을 넣지 않습니다.');
   const settings = reviewOnly ? {authUrl:'', publicKey:'', endpoint:'', aiEndpoint:'', articleTestEnabled:false, feedbackTestEnabled:false} : validateConfig(config);
@@ -151,11 +170,16 @@ function assemble({root = ROOT, config, reviewOnly = false} = {}) {
   files['manifest.json'] = Buffer.from(JSON.stringify(releaseManifest, null, 2) + '\n');
   files['submission-config.js'] = Buffer.from("'use strict';\nconst SubmissionConfig = Object.freeze(" + JSON.stringify(settings) + ');\n');
   for (const [name, data] of Object.entries(files)) checkSecrets(data.toString(), name);
+  const vendor = readVendor(root);
+  sourceHashes[VENDOR_LIST] = vendor.listingHash;
+  Object.assign(files, vendor.files);
+  for (const page of ['sidepanel.html', 'pdf-viewer.html'])
+    for (const match of files[page].toString().matchAll(/(?:src|href)="([^"]+)"/g)) if (!files[match[1]]) throw Error('패키지 참조 누락: ' + match[1]);
   const html = files['sidepanel.html'].toString();
-  for (const match of html.matchAll(/(?:src|href)="([^"]+)"/g)) if (!files[match[1]]) throw Error('패키지 참조 누락: ' + match[1]);
   if (/dev-only|개발자 도구|local-preview|synthetic-submit|mock-recommend/.test(html)) throw Error('개발 UI 혼입');
   // A restrictive release-only CSP also prevents accidental loopback connections.
-  releaseManifest.content_security_policy = {extension_pages:"script-src 'self'; object-src 'none'; connect-src " + (reviewOnly ? "'none'" : releaseManifest.host_permissions.map(value => value.slice(0, -2)).join(' ')) + ';'};
+  // 'self'는 PDF.js가 패키지 안의 CMap·표준 글꼴을 읽는 데만 필요하다(원격 출처 추가 없음).
+  releaseManifest.content_security_policy = {extension_pages:"script-src 'self'; object-src 'none'; connect-src 'self'" + (reviewOnly ? '' : ' ' + releaseManifest.host_permissions.map(value => value.slice(0, -2)).join(' ')) + ';'};
   files['manifest.json'] = Buffer.from(JSON.stringify(releaseManifest, null, 2) + '\n');
   return {files, sourceHashes, manifest:releaseManifest, extensionId:extensionId(manifest.key), reviewOnly};
 }
@@ -185,7 +209,12 @@ function build({config, reviewOnly = false, label, root = ROOT} = {}) {
   const destination = path.join(dist, label);
   fs.mkdirSync(destination);
   fs.mkdirSync(path.join(destination, 'extension'));
-  for (const [name, data] of files) fs.writeFileSync(path.join(destination, 'extension', name), data, {flag:'wx'});
+  for (const [name, data] of files) {
+    const target = path.join(destination, 'extension', name);
+    if (!path.resolve(target).startsWith(path.resolve(destination, 'extension') + path.sep)) throw Error('패키지 경로 오류: ' + name);
+    fs.mkdirSync(path.dirname(target), {recursive:true});
+    fs.writeFileSync(target, data, {flag:'wx'});
+  }
   fs.writeFileSync(path.join(destination, 'extension.zip'), zip, {flag:'wx'});
   fs.writeFileSync(path.join(destination, 'build-report.json'), JSON.stringify(report, null, 2) + '\n', {flag:'wx'});
   fs.writeFileSync(path.join(destination, 'SHA256SUMS'), report.zipSha256 + '  extension.zip\n' + files.map(([name, data]) => hash(data) + '  extension/' + name).join('\n') + '\n', {flag:'wx'});
@@ -210,4 +239,4 @@ if (require.main === module) {
     console.log(JSON.stringify({output:result.destination, mode:result.report.mode, extensionId:result.report.extensionId, zipSha256:result.report.zipSha256}));
   } catch { console.error('빌드 실패: 인수·공개 설정·소스 검사 또는 출력 경로를 확인하세요. 기존 산출물은 덮어쓰지 않습니다.'); process.exitCode = 1; }
 }
-module.exports = {RUNTIME, validateConfig, stripDevelopment, makeZip, assemble, build, extensionId};
+module.exports = {RUNTIME, VENDOR_LIST, readVendor, validateConfig, stripDevelopment, makeZip, assemble, build, extensionId};

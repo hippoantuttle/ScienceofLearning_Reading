@@ -12,6 +12,8 @@ dev는 같은 ID의 `TASK-XXX-결과.md`에 결과를 보고한다.
 이 폴더는 공개된다. 실제 참가자 응답·연락처·원본 로그·비밀키는 넣지 않는다.
 
 ## 현재 실행 기준 (2026-11-10 갱신)
+- 2026-11-12: TASK-022 사용자 정상 동작 보고 및 로컬 커밋·OS 임시 폴더 인계 지시. 미보고 개별 Chrome 검사·5인 QA와 main 병합·push·배포는 별개로 유지한다.
+- 2026-11-11 후속 우선 작업: [TASK-022 Google 로그인 유지](TASK-022-Google-로그인-유지.md), 작업 경로 `C:\Users\patri\ScienceofLearning_Reading`, 브랜치 `feature/google-session`. Google 세션을 브라우저 종료 전까지 유지하며 상세 검증·Chrome 미검증 범위는 [결과](TASK-022-결과.md)를 따른다. 아래의 과거 provider=false·배포 대기 상태는 당시 기록이며 TASK-020 결과 마지막 실환경 적용 절을 우선한다.
 - 상위 목표는 TASK-013 v3이며 후속 사용자 지시로 PDF 지원을 웹 앞에 추가했다. 먼저 확장 단독 사용 버전을 완성·보존하고 이후 PDF 지원·개인 기록 웹·복습을 추가한다. 단독 사용은 원격 DB·AI를 이용하며 별도 웹사이트와 사용자 PC의 로컬 개발 서버가 필요 없는 상태다. 완전 오프라인 제품은 아니다.
 - 저장소: `C:\Users\patri\ScienceofLearning_Reading`
 - 현재 작업 경로: `C:\Users\patri\ScienceofLearning_Reading`, `feature/google-cohort-pilot`. 0f8f8fd와 이전 미커밋 TASK-017/019 변경을 보존한 상태에서 기능 브랜치를 생성했다. 기존 별도 worktree는 편집하지 않았다.

@@ -8,9 +8,9 @@ function resetRecordsPanel(){
   recordsEl('records-versions').textContent=''; recordsEl('records-detail').hidden=true;
   recordsEl('records-more').hidden=true; recordsEl('records-revisions-more').hidden=true;
 }
-function recordsIo(){return RecordClient.create({endpoint:SubmissionConfig.endpoint,getToken:()=>panelFlow().getToken()});}
+function recordsIo(){const flow=panelFlow();return RecordClient.create({endpoint:SubmissionConfig.endpoint,getToken:options=>typeof panelFreshToken==='function'?panelFreshToken(flow,options):flow.getToken()});}
 function recordsError(error){
-  if(error.status===401 || error.status===403){resetRecordsPanel();if(typeof panelExpireAccount==='function')panelExpireAccount();}
+  if(error.status===401 || error.status===403){resetRecordsPanel();if(error.status===401&&typeof panelExpireAccount==='function')panelExpireAccount();}
   recordsEl('records-status').textContent=error.message||'기록 조회에 실패했습니다. 다시 시도하세요.';
 }
 function recordsCurrent(generation){return generation===recordsGeneration && recordsVisible() && !articleSession;}

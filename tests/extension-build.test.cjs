@@ -60,7 +60,7 @@ test('검토 전용 산출물은 네트워크 권한과 연결을 차단하며 �
   for (const source of ['// @development-start\nunfinished', '// @development-end']) assert.throws(() => stripDevelopment(source));
 });
 
-function panelFixture(files, fetchImpl) {
+function panelFixture(files, fetchImpl, storageData = {}) {
   const html = files['sidepanel.html'].toString(), elements = {};
   for (const tag of html.matchAll(/<[^>]+\bid="([^"]+)"[^>]*>/g)) {
     const id = tag[1];
@@ -75,11 +75,21 @@ function panelFixture(files, fetchImpl) {
     sendMessage:async(_id, message)=>{if(message.action==='EXTRACT_ARTICLE')return {status:'success', text:'직접 작성한 가상 글입니다.', wordCount:4, charCount:15, token:'synthetic'};
       if(message.enabled)calls.blur++;else calls.restore++;return {status:'success', enabled:!!message.enabled};}
   }};
+  const extensionId='jenapgoakhnmlmjcdnkfakkkgjobbfbb', workerListeners=[], panelListeners=[];
+  const deliver=(listeners,message,sender)=>new Promise((resolve,reject)=>{if(!listeners.length)return reject(Error('no receiver'));for(const fn of listeners)fn(message,sender,resolve);});
+  chrome.identity={getRedirectURL:path=>`https://${extensionId}.chromiumapp.org/${path}`,launchWebAuthFlow:async()=>{throw Error('no fixture login')}};
+  chrome.runtime={id:extensionId,getURL:path=>`chrome-extension://${extensionId}/${path}`,onMessage:{addListener:fn=>panelListeners.push(fn)},sendMessage:message=>deliver(workerListeners,message,{id:extensionId,url:`chrome-extension://${extensionId}/sidepanel.html`})};
+  const workerChrome={...chrome,action:{onClicked:{addListener(){}}},sidePanel:{setPanelBehavior:async()=>{}},
+    storage:{session:{setAccessLevel:async()=>{},get:async key=>({[key]:structuredClone(storageData[key])}),set:async value=>Object.assign(storageData,structuredClone(value)),remove:async key=>{delete storageData[key]}}},
+    runtime:{...chrome.runtime,onMessage:{addListener:fn=>workerListeners.push(fn)},sendMessage:async message=>{for(const fn of panelListeners)fn(message,{id:extensionId});}}};
+  const worker=vm.createContext({chrome:workerChrome,URL,URLSearchParams,TextEncoder,AbortController,setTimeout,clearTimeout,crypto:globalThis.crypto,atob,btoa,console:{info(){},error(){}},fetch:fetchImpl});
+  worker.importScripts=(...names)=>{for(const name of names)vm.runInContext(files[name].toString(),worker,{filename:name});};
+  vm.runInContext(files['background.js'].toString(),worker,{filename:'background.js'});
   const context = vm.createContext({document:{getElementById:id=>elements[id] || null, querySelectorAll:()=>[]}, chrome, URL, URLSearchParams, TextEncoder, AbortController, setTimeout, clearTimeout,
     crypto:globalThis.crypto, structuredClone, atob, btoa,
     confirm:()=>true, MutationObserver:class {observe(){}}, fetch:async(...args)=>{calls.network++;if(fetchImpl)return fetchImpl(...args);throw Error('NETWORK_BLOCKED');}});
   for (const match of html.matchAll(/<script src="([^"]+)"/g)) vm.runInContext(files[match[1]].toString(), context, {filename:match[1]});
-  return {elements, context, events, tab, calls};
+  return {elements, context, events, tab, calls, storageData};
 }
 
 test('실제 패키지 스크립트는 개발 DOM 없이 읽기·Retell·복원·종료를 실행한다', async () => {
@@ -320,7 +330,7 @@ test('설치본은 AI 한도·장애 후에도 직접 제출·수정 저장을 �
 
 test('Google 설치본은 identity만 선택적으로 추가하고 비밀/임의 OAuth 설정을 거부한다',()=>{
   const result=assemble({config:{...config,googleLoginEnabled:true}});
-  assert.deepEqual(result.manifest.permissions,['sidePanel','activeTab','scripting','identity']);
+  assert.deepEqual(result.manifest.permissions,['sidePanel','activeTab','scripting','identity','storage']);
   assert.equal(result.manifest.host_permissions.some(host=>host.includes('google')),false);
   assert.ok(!assemble({config}).manifest.permissions.includes('identity'));
   assert.ok(!assemble({reviewOnly:true}).manifest.permissions.includes('identity'));
@@ -335,20 +345,19 @@ test('Google 설치본은 검증된 계정의 사전 등록 승인 후 로그인
     const route=new URL(url);
     if(route.origin===config.authUrl){
       if(route.pathname==='/auth/v1/token'){
-        assert.equal(route.searchParams.get('grant_type'),'pkce');return Response.json({access_token:'synthetic-'+currentUser,user:{id:currentUser}});
+        const grant=route.searchParams.get('grant_type');assert.ok(['pkce','refresh_token'].includes(grant));return Response.json({access_token:'synthetic-'+currentUser+(grant==='refresh_token'?'-renewed':''),refresh_token:'synthetic-refresh',expires_in:3600,user:{id:currentUser}});
       }
       if(route.pathname==='/auth/v1/user')return Response.json({id:currentUser,email:currentUser===owner?'owner@example.invalid':'other@example.invalid',email_confirmed_at:'2026-11-10T00:00:00Z',identities:[{provider:'google',identity_data:{email:currentUser===owner?'owner@example.invalid':'other@example.invalid',email_verified:true}}]});
       if(route.pathname.endsWith('/claim_google_pilot_access')){claims++;assert.deepEqual(JSON.parse(options.body),{});return Response.json(eligible);}
       assert.ok(route.pathname.endsWith('/is_active_pilot_member'));return Response.json(true);
     }
     assert.equal(route.pathname,'/submissions');
-    if(expire){expire=false;return Response.json({error:'unauthorized'},{status:401});}
+    if(expire)return Response.json({error:'unauthorized'},{status:401});
     if(options.method==='POST'){payload=JSON.parse(options.body);saves++;}
     return Response.json({status:'saved',submissionId:other,savedAt:'2026-11-10T00:00:00Z',...(options.method==='GET'?{payload}:{})});
   };
   const fixture=panelFixture(assemble({config:{...config,googleLoginEnabled:true}}).files,fetchImpl),e=fixture.elements;
-  fixture.context.chrome.runtime={id:'jenapgoakhnmlmjcdnkfakkkgjobbfbb'};
-  fixture.context.chrome.identity={getRedirectURL:path=>'https://jenapgoakhnmlmjcdnkfakkkgjobbfbb.chromiumapp.org/'+path,launchWebAuthFlow:async({url})=>{const callback=new URL(new URL(url).searchParams.get('redirect_to'));callback.searchParams.set('code','synthetic-code');return callback.href;}};
+  fixture.context.chrome.identity.launchWebAuthFlow=async({url})=>{const callback=new URL(new URL(url).searchParams.get('redirect_to'));callback.searchParams.set('code','synthetic-code');return callback.href;};
   assert.equal(e['account-form'].hidden,true);assert.equal(e['account-google'].hidden,false);
   await e['account-google-login'].handlers.click();assert.match(e['account-status'].textContent,/사전 등록/);
   assert.equal(vm.runInContext('panelFlow().getToken()',fixture.context),null);
@@ -361,6 +370,72 @@ test('Google 설치본은 검증된 계정의 사전 등록 승인 후 로그인
   assert.equal(e['account-google'].hidden,false);assert.equal(e['main-idea'].value,'Google 합성 답안');
   const before=claims;currentUser=other;await e['account-google-login'].handlers.click();
   assert.equal(claims,before);assert.match(e['account-status'].textContent,/같은 Google/);
-  currentUser=owner;await e['account-google-login'].handlers.click();await e['submission-send'].handlers.click();
+  currentUser=owner;expire=false;await e['account-google-login'].handlers.click();await e['submission-send'].handlers.click();
   assert.equal(saves,1);assert.match(e['submission-status'].textContent,/저장했습니다/);
+});
+
+test('Google 설치본은 패널·워커 재생성 후 복원하고 자동 AI/기록 호출 없이 브라우저 세션 종료를 반영한다',async()=>{
+  const owner='aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',storage={},calls=[];
+  const fetchImpl=async(url)=>{
+    calls.push(url);const route=new URL(url);
+    if(route.pathname==='/auth/v1/token')return Response.json({access_token:'synthetic-access',refresh_token:'synthetic-refresh',expires_in:3600,user:{id:owner}});
+    if(route.pathname==='/auth/v1/user')return Response.json({id:owner,email:'reader@example.invalid',email_confirmed_at:'synthetic-confirmed',identities:[{provider:'google',identity_data:{email:'reader@example.invalid',email_verified:true}}]});
+    if(route.pathname==='/auth/v1/logout')return new Response(null,{status:204});
+    assert.ok(route.pathname.startsWith('/rest/v1/rpc/'));return Response.json(true);
+  };
+  const files=assemble({config:{...config,googleLoginEnabled:true}}).files;
+  const first=panelFixture(files,fetchImpl,storage);
+  first.context.chrome.identity.launchWebAuthFlow=async({url})=>{const callback=new URL(new URL(url).searchParams.get('redirect_to'));callback.searchParams.set('code','synthetic-code');return callback.href;};
+  await first.elements['account-google-login'].handlers.click();
+  assert.match(first.elements['account-identity'].textContent,/reader@example/);
+  const reopened=panelFixture(files,fetchImpl,storage);
+  await vm.runInContext('panelRestoreSession()',reopened.context);
+  assert.match(reopened.elements['account-identity'].textContent,/reader@example/);
+  assert.equal(calls.filter(u=>u.includes('/auth/v1/token')).length,1,'복원은 OAuth를 다시 실행하지 않는다');
+  assert.equal(calls.some(u=>u.includes('/recommend')||u.includes('/records')),false,'복원은 사용자 콘텐츠를 요청하지 않는다');
+  await reopened.elements['account-logout'].handlers.click();
+  assert.equal(Object.keys(storage).length,0);
+  const signedOut=panelFixture(files,fetchImpl,storage);
+  await vm.runInContext('panelRestoreSession()',signedOut.context);
+  assert.equal(signedOut.elements['account-signed-in'].hidden,true);
+  assert.equal(calls.some(u=>u.includes('/logout?scope=local')),true);
+  const restarted=panelFixture(files,fetchImpl,{});
+  await vm.runInContext('panelRestoreSession()',restarted.context);
+  assert.equal(restarted.elements['account-signed-in'].hidden,true);
+});
+
+test('Google 설치본의 저장은 401 뒤 같은 내용으로 한 번 갱신 재시도하고 피드백도 최신 토큰을 사용한다',async()=>{
+  const owner='aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',recordId='bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
+  let refreshes=0,aiCalls=0,snapshot;const attempts=[];
+  const fetchImpl=async(url,options)=>{
+    const route=new URL(url);
+    if(route.pathname==='/auth/v1/token'){
+      if(route.searchParams.get('grant_type')==='refresh_token')refreshes++;
+      return Response.json({access_token:refreshes?'synthetic-new':'synthetic-old',refresh_token:'synthetic-refresh',expires_in:3600,user:{id:owner}});
+    }
+    if(route.pathname==='/auth/v1/user')return Response.json({id:owner,email:'reader@example.invalid',email_confirmed_at:'confirmed',identities:[{provider:'google',identity_data:{email:'reader@example.invalid',email_verified:true}}]});
+    if(route.pathname.startsWith('/rest/v1/rpc/'))return Response.json(true);
+    if(route.pathname==='/submissions'){
+      if(options.method==='POST'){
+        attempts.push(options);
+        if(attempts.length===1)return Response.json({error:'unauthorized'},{status:401});
+        snapshot=JSON.parse(options.body);
+      }
+      assert.equal(options.headers.Authorization,'Bearer synthetic-new');
+      return Response.json({status:'saved',submissionId:recordId,savedAt:'2026-11-11T00:00:00Z',...(options.method==='GET'?{payload:snapshot}:{})});
+    }
+    assert.equal(route.pathname,'/feedback');assert.equal(options.headers.Authorization,'Bearer synthetic-new');aiCalls++;
+    return Response.json({kind:'feedback',feedback:{suggestions:['직접 관계를 확인해 보세요.']}});
+  };
+  const t=panelFixture(assemble({config:{...config,googleLoginEnabled:true,feedbackTestEnabled:true}}).files,fetchImpl),e=t.elements;
+  t.context.chrome.identity.launchWebAuthFlow=async({url})=>{const callback=new URL(new URL(url).searchParams.get('redirect_to'));callback.searchParams.set('code','synthetic-code');return callback.href;};
+  await e['account-google-login'].handlers.click();assert.equal(aiCalls,0);
+  await e.analyze.handlers.click();await e['start-reading'].handlers.click();
+  for(const id of ['main-idea','primary','support','relation'])e[id].value='합성 답안';
+  await e.worksheet.handlers.submit();e['retell-input'].value='합성 인출';await e['to-review'].handlers.click();
+  await e['submission-send'].handlers.click();
+  assert.equal(refreshes,1);assert.equal(attempts.length,2);
+  assert.equal(attempts[0].body,attempts[1].body);assert.equal(attempts[0].headers['Idempotency-Key'],attempts[1].headers['Idempotency-Key']);
+  assert.match(e['submission-status'].textContent,/저장했습니다/);
+  await e['feedback-request'].handlers.click();assert.equal(aiCalls,1);assert.match(e['feedback-result'].textContent,/직접 관계/);
 });

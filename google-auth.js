@@ -1,6 +1,6 @@
 'use strict';
-// Supabase provider OAuth + PKCE. No provider tokens, refresh tokens or verifier
-// are persisted. Google consent runs in Chrome's own authentication window.
+// Supabase provider OAuth + PKCE, called only by the authentication worker.
+// Provider tokens and verifier are discarded; Supabase tokens go to session storage.
 const GoogleAuth=(()=>{
   const uuid=/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
   const encode=bytes=>btoa(String.fromCharCode(...bytes)).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');
@@ -48,7 +48,8 @@ const GoogleAuth=(()=>{
         const email=typeof user?.email==='string'?user.email.trim().toLowerCase():'';
         const verified=Array.isArray(user?.identities)&&user.identities.some(i=>i.provider==='google'&&i.identity_data?.email_verified===true&&i.identity_data?.email?.toLowerCase()===email);
         if(user?.id!==session.user.id||!email||!user.email_confirmed_at||!verified)throw Error('확인된 Google 계정으로 다시 로그인하세요.');
-        return {accessToken:token,userId:user.id,email};
+        if(typeof session.refresh_token!=='string'||!session.refresh_token||session.refresh_token.length>8192||/\s/.test(session.refresh_token)||!Number.isFinite(session.expires_in)||session.expires_in<=0||session.expires_in>86400)throw Error('Google 로그인 응답을 확인하지 못했습니다.');
+        return {accessToken:token,refreshToken:session.refresh_token,expiresAt:now()+session.expires_in*1000,userId:user.id,email};
       }finally{verifier='';busy=false;}
     };
     login.cancel=()=>{generation++;};

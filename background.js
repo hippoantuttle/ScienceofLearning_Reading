@@ -1,3 +1,17 @@
+// Authentication lives in this worker, not in the panel or page content scripts.
+if (typeof importScripts === 'function') {
+  importScripts('submission-config.js', 'google-auth.js', 'session-auth.js');
+  // @development-start
+  try { importScripts('submission-config.local.js'); } catch {}
+  // @development-end
+  if (SubmissionConfig.googleLoginEnabled === true && chrome.storage?.session) {
+    const manager = SessionAuth.create({config:SubmissionConfig, storage:chrome.storage.session,
+      login:GoogleAuth.create({baseUrl:SubmissionConfig.authUrl, publicKey:SubmissionConfig.publicKey}),
+      notify:event => { chrome.runtime.sendMessage({type:'reading-auth-changed', event}).catch(() => {}); }});
+    SessionAuth.install({chrome, manager});
+  }
+}
+
 // Comparison experiment: invoke the action directly rather than letting Chrome
 // open the panel automatically. No additional tab or host permissions are used.
 chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: false }).catch((error) => {

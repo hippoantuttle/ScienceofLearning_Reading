@@ -10,7 +10,7 @@ const RUNTIME = Object.freeze([
   'background.js', 'content.js', 'sidepanel.html', 'sidepanel.css',
   'panel-ui.js', 'worksheet.js', 'ai-client.js', 'submission-client.js',
   'record-contract.js', 'record-client.js', 'submission-contract.js',
-  'submission-http.js', 'submission-auth.js', 'google-auth.js', 'submission-flow.js',
+  'submission-http.js', 'submission-auth.js', 'google-auth.js', 'session-auth.js', 'panel-session.js', 'submission-flow.js',
   'sidepanel.js', 'submission-panel.js', 'pilot-ai-panel.js',
   'feedback-panel.js', 'records-panel.js', 'account-bar.js', 'panel-shell.js',
   'pdf-worksheet.js', 'pdf-paragraphs.js', 'pdf-units.js', 'pdf-viewer.js', 'pdf-viewer.html', 'pdf-viewer.css'
@@ -153,7 +153,7 @@ function assemble({root = ROOT, config, reviewOnly = false} = {}) {
   const releaseManifest = {
     manifest_version:3, key:manifest.key, name:'한국어 독해 훈련' + (reviewOnly ? ' · 검토 전용' : ''),
     version:manifest.version, minimum_chrome_version:'116', description:'스스로 읽고 구조화하고 다시 말하는 독해 훈련',
-    permissions:['sidePanel', 'activeTab', 'scripting',...(settings.googleLoginEnabled?['identity']:[])],
+    permissions:['sidePanel', 'activeTab', 'scripting',...(settings.googleLoginEnabled?['identity','storage']:[])],
     host_permissions:reviewOnly ? [] : [...new Set([settings.authUrl, settings.endpoint, settings.aiEndpoint].filter(Boolean).map(url => new URL(url).origin + '/*'))],
     background:{service_worker:'background.js'}, action:{default_title:'독해 훈련 사이드 패널 열기'},
     side_panel:{default_path:'sidepanel.html'}

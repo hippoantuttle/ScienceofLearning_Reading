@@ -12,7 +12,9 @@ const RecordClient = (() => {
       const token = await getToken(); if (!token) throw Error('로그인이 필요합니다.');
       const controller = new AbortController(), timer = setTimeout(() => controller.abort(), 15000);
       try {
-        const response = await fetchImpl(root + path, {method, headers: {Authorization: `Bearer ${token}`, ...(body ? {'Content-Type': 'application/json', 'Idempotency-Key': body.requestId} : {})}, ...(body ? {body: JSON.stringify(body)} : {}), redirect: 'error', credentials: 'omit', cache: 'no-store', signal: controller.signal});
+        const send = value => fetchImpl(root + path, {method, headers: {Authorization: `Bearer ${value}`, ...(body ? {'Content-Type': 'application/json', 'Idempotency-Key': body.requestId} : {})}, ...(body ? {body: JSON.stringify(body)} : {}), redirect: 'error', credentials: 'omit', cache: 'no-store', signal: controller.signal});
+        let response = await send(token);
+        if (response.status === 401) { const renewed = await getToken({rejectedToken:token}); if (renewed && renewed !== token) response = await send(renewed); }
         if (!response.ok) {
           let body=null;try{body=await response.json();}catch{}
           const code=body?.error==='records_schema_missing'?'records_schema_missing':null;

@@ -13,16 +13,16 @@ function setup({changeCallback,changeUser,launchError,fetchError,clock,hold}={})
  }};
  const fetchImpl=async(url,options)=>{
   calls.push({url,options});if(fetchError)return Response.json({sensitive:'not displayed'},{status:503});
-  if(url.endsWith('/token?grant_type=pkce'))return Response.json({access_token:'synthetic-session-token',refresh_token:'discard-me',provider_token:'discard-me-too',user:{id:uid}});
+  if(url.endsWith('/token?grant_type=pkce'))return Response.json({access_token:'synthetic-session-token',refresh_token:'synthetic-refresh',expires_in:3600,provider_token:'discard-me-too',user:{id:uid}});
   assert.equal(url,'https://synthetic.supabase.co/auth/v1/user');
   return Response.json(changeUser?changeUser(structuredClone(user)):user);
  };
- const login=create({baseUrl:'https://synthetic.supabase.co',publicKey:'sb_publishable_synthetic',identity,extensionId:id,fetchImpl,cryptoImpl:crypto.webcrypto,...(clock?{now:clock}:{})});
+ const login=create({baseUrl:'https://synthetic.supabase.co',publicKey:'sb_publishable_synthetic',identity,extensionId:id,fetchImpl,cryptoImpl:crypto.webcrypto,now:clock||(()=>1000000)});
  return {login,calls,launches,issued:()=>issued};
 }
 test('Google PKCE는 정확한 복귀/랜덤 검증값·최소 로그인 범위를 사용하고 확인된 Supabase 사용자만 반환한다',async()=>{
  const t=setup(),result=await t.login(),url=t.issued();
- assert.deepEqual(result,{accessToken:'synthetic-session-token',userId:uid,email:user.email});
+ assert.deepEqual(result,{accessToken:'synthetic-session-token',refreshToken:'synthetic-refresh',expiresAt:4600000,userId:uid,email:user.email});
  assert.equal(url.origin,'https://synthetic.supabase.co');assert.equal(url.pathname,'/auth/v1/authorize');
  assert.equal(url.searchParams.get('provider'),'google');assert.equal(url.searchParams.get('scopes'),'openid email profile');
  assert.equal(url.searchParams.get('code_challenge_method'),'s256');assert.equal(t.launches[0].interactive,true);

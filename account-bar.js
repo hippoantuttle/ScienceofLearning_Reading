@@ -1,6 +1,6 @@
 'use strict';
 // 상단 계정 바: AI 추천·제출·피드백이 공유하는 단일 로그인(panelFlow, submission-panel.js).
-// 비밀번호는 시도 직후 비우고, 토큰·이메일은 패널 메모리에만 둔다.
+// 비밀번호는 시도 직후 비운다. Google 세션은 워커가 브라우저 종료 전까지만 보관한다.
 const accountEl = id => document.getElementById(id);
 // TASK-021: 로그인 폼은 기본으로 접어 두고, 헤더 「로그인」이나 저장·기록·AI처럼 로그인이 필요한 순간에만 펼친다.
 let accountLoginOpen = false;
@@ -41,7 +41,7 @@ accountEl('account-form').addEventListener('submit', async (event) => {
   } catch (error) { status.textContent = error?.message || '로그인하지 못했습니다.';globalThis.PanelUI?.tone(status,'error'); }
   finally { password.value = ''; button.disabled = false; }
 });
-accountEl('account-logout').addEventListener('click', () => {
+accountEl('account-logout').addEventListener('click', async () => {
   const flow = typeof panelSubmissionFlow !== 'undefined' ? panelSubmissionFlow : null;
   if (flow?.hasPending?.()) {
     const message = flow.verifiedSnapshot?.()
@@ -54,6 +54,12 @@ accountEl('account-logout').addEventListener('click', () => {
   globalThis.PanelUI?.tone(accountEl('account-status'),'success');
   accountRender();
   accountEl('account-toggle')?.focus?.();
+  if (SubmissionConfig.googleLoginEnabled === true) {
+    try {
+      const result = await PanelSession.call('signOut');
+      if (!result.revoked) accountEl('account-status').textContent = '이 브라우저에서 로그아웃했습니다. 서버 연결 문제로 원격 세션 종료는 확인하지 못했습니다.';
+    } catch { accountEl('account-status').textContent = '로그아웃 처리를 확인하지 못했습니다. 연결을 확인한 뒤 다시 시도하세요.'; }
+  }
 });
 // 로그인이 필요한 순간에 헤더 로그인 영역을 펼치고 첫 입력으로 포커스를 옮긴다.
 function accountOpenLogin(message) {
@@ -72,8 +78,7 @@ accountEl('account-toggle')?.addEventListener('click', () => {
 accountEl('submission-login-open')?.addEventListener('click', () => accountOpenLogin('저장하려면 로그인하세요. 로그인 후 「동의하고 저장」을 다시 누르세요.'));
 accountRender();
 
-let currentGoogleLogin=null;
-function cancelGoogleLogin(){currentGoogleLogin?.cancel();}
+function cancelGoogleLogin(){if(typeof panelAuthEpoch!=='undefined')panelAuthEpoch++;}
 accountEl('account-google-login').addEventListener('click',async()=>{
   const button=accountEl('account-google-login'),status=accountEl('account-status');
   if(button.disabled||SubmissionConfig.googleLoginEnabled!==true)return;
@@ -81,18 +86,9 @@ accountEl('account-google-login').addEventListener('click',async()=>{
   status.textContent='Google 계정 확인 창에서 로그인을 진행하세요.';
   try{
     flow=panelFlow();
-    currentGoogleLogin??=GoogleAuth.create({baseUrl:SubmissionConfig.authUrl,publicKey:SubmissionConfig.publicKey});
-    const session=await currentGoogleLogin();
+    const session=await PanelSession.call('signIn',{expectedUserId:flow.hasPending()?flow.getAccountId():undefined});
     if(panelSubmissionFlow!==flow)return;
-    const claim=async token=>{
-      const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),15000);
-      try{
-        const response=await fetch(new URL('/rest/v1/rpc/claim_google_pilot_access',SubmissionConfig.authUrl).href,{method:'POST',headers:{apikey:SubmissionConfig.publicKey,Authorization:'Bearer '+token,'Content-Type':'application/json'},body:'{}',credentials:'omit',cache:'no-store',redirect:'error',signal:controller.signal});
-        if(!response.ok)throw Error('Google 참여 승인 서버를 확인하지 못했습니다. 운영자에게 문의하세요.');
-        return await response.json()===true;
-      }finally{clearTimeout(timer);}
-    };
-    await flow.signInGoogle(session,claim);
+    flow.resumeGoogle(session);
     if(panelSubmissionFlow!==flow)return;
     panelAccount=null;resetRecordsPanel();
     status.textContent='';accountRender();
@@ -100,8 +96,9 @@ accountEl('account-google-login').addEventListener('click',async()=>{
   }catch(error){
     if(flow&&panelSubmissionFlow!==flow)return;
     // Do not display arbitrary browser/network error text or callback URLs.
-    const safe=['Google 로그인','확인된 Google','기존 제출은 같은 Google','사전 등록된 Google','Google 참여 승인'];
+    const safe=['Google 로그인','확인된 Google','기존 제출은 같은 Google','사전 등록된 Google','Google 참여 승인','로그인 확인 서비스','로그인이 만료'];
     status.textContent=safe.some(prefix=>error?.message?.startsWith(prefix))?error.message:'Google 로그인을 확인하지 못했습니다. 다시 시도하세요.';
     accountRender();globalThis.PanelUI?.tone(status,'error');
   }finally{button.disabled=false;}
 });
+if (typeof panelRestoreSession === 'function') void panelRestoreSession();

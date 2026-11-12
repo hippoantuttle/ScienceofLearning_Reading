@@ -167,9 +167,16 @@
       <label for="structure">구조도 유형 (직접 선택)</label><select id="structure"><option value="claim">주장–근거</option><option value="cause">원인–결과</option><option value="problem">문제–해결</option></select>
       <div class="structure-map" role="group" aria-label="직접 작성하는 구조도">
         <div class="structure-node"><label id="primary-label" for="primary">핵심 정보 · 주장</label><textarea id="primary" rows="3" required aria-describedby="primary-error"></textarea><p id="primary-error" class="field-error"></p></div>
-        <div class="structure-link"><span aria-hidden="true">↓</span><label for="relation">관계 설명</label><textarea id="relation" rows="3" required aria-describedby="relation-error"></textarea><p id="relation-error" class="field-error"></p><span aria-hidden="true">↓</span></div>
+        <div class="structure-link" aria-hidden="true">↕</div>
         <div class="structure-node"><label id="support-label" for="support">보조 정보 · 근거</label><textarea id="support" rows="3" required aria-describedby="support-error"></textarea><p id="support-error" class="field-error"></p></div>
       </div>
+      <details id="relation-details" class="relation-details">
+        <summary>왜 이렇게 연결했나요? (선택)</summary>
+        <p id="relation-help" class="hint">원문의 어떤 내용을 보고 두 정보를 연결했는지 짧게 적어보세요.</p>
+        <p id="relation-type-help" class="hint">이 근거의 어떤 부분이 주장을 뒷받침하나요?</p>
+        <p id="relation-source-help" class="hint">원문에 설명된 내용이 있을 때 작성하세요.</p>
+        <label for="relation">왜 이렇게 연결했나요? (선택)</label><textarea id="relation" rows="3" aria-describedby="relation-help relation-type-help relation-source-help relation-error"></textarea><p id="relation-error" class="field-error"></p>
+      </details>
       </div>
       <div id="form-error" role="alert"></div>
       <div id="retell-submit-block">
@@ -192,7 +199,7 @@
 
   <section id="review-view" aria-labelledby="step4" hidden>
     <h2 id="step4" tabindex="-1">정리·저장</h2>
-    <dl><dt>중심 생각</dt><dd id="summary-main"></dd><dt>구조도 유형</dt><dd id="summary-type"></dd><dt>핵심 정보</dt><dd id="summary-primary"></dd><dt>보조 정보</dt><dd id="summary-support"></dd><dt>관계 설명</dt><dd id="summary-relation"></dd><dt>다시 말하기(Retell)</dt><dd id="summary-retell"></dd></dl>
+    <dl><dt>중심 생각</dt><dd id="summary-main"></dd><dt>구조도 유형</dt><dd id="summary-type"></dd><dt>핵심 정보</dt><dd id="summary-primary"></dd><dt>보조 정보</dt><dd id="summary-support"></dd><dt>왜 이렇게 연결했나요? (선택)</dt><dd id="summary-relation"></dd><dt>다시 말하기(Retell)</dt><dd id="summary-retell"></dd></dl>
     <label for="reflection">감상 (선택)</label><textarea id="reflection"></textarea>
     <label for="new-words">새 어휘 (선택)</label><textarea id="new-words"></textarea>
     <label for="interests">관심 분야 (선택)</label><textarea id="interests"></textarea>
@@ -237,7 +244,7 @@
     <label for="feedback-main">중심 생각</label><textarea id="feedback-main" rows="3"></textarea>
     <label for="feedback-primary">핵심 정보</label><textarea id="feedback-primary" rows="3"></textarea>
     <label for="feedback-support">보조 정보</label><textarea id="feedback-support" rows="3"></textarea>
-    <label for="feedback-relation">관계 설명</label><textarea id="feedback-relation" rows="3"></textarea>
+    <label for="feedback-relation">왜 이렇게 연결했나요? (선택)</label><textarea id="feedback-relation" rows="3"></textarea>
     <label for="feedback-retell">다시 말하기(Retell)</label><textarea id="feedback-retell" rows="3"></textarea>
     <button id="feedback-compare" type="button">최초본과 수정본 비교</button><pre id="feedback-comparison"></pre>
     <button id="revision-save" type="button" class="primary" disabled aria-describedby="revision-status">수정본 저장 / 실패한 요청 재시도</button>

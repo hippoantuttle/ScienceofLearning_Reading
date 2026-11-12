@@ -30,3 +30,12 @@ test('잘린 응답(finish_reason length)은 거절한다',async()=>{
   const fetchImpl=async()=>Response.json({choices:[{finish_reason:'length',message:{content:'{'}}]});
   await assert.rejects(callFeedback('k',fetchImpl,'원문',{retell:summary}));
 });
+
+test('선택 설명 미작성도 동일한 Retell 루브릭·응답 형식으로 요청하며 누락/감점하지 않도록 지시한다',async()=>{
+  let sent; const fake=async(_url,init)=>{sent=JSON.parse(init.body);return Response.json({choices:[{finish_reason:'stop',message:{content:JSON.stringify(base)}}]});};
+  const out=await callFeedback('synthetic-key',fake,'합성 원문',{structure_type:'claim',main_idea:'합성',primary_text:'합성',support_text:'합성',relation_text:'',retell:summary});
+  assert.equal(JSON.parse(sent.messages[1].content).reference.relation,'');
+  assert.match(sent.messages[0].content,/빈 문자열은 정상적인 미작성/);
+  assert.match(sent.messages[0].content,/이해 부족·누락·감점 근거로 삼거나 설명 작성을 의무적으로 요구하지 마세요/);
+  assert.deepEqual(Object.keys(out).sort(),['criteria','improvements','missingIdea','overall','strengths']);
+});

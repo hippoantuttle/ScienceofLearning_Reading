@@ -1,6 +1,6 @@
 const Worksheet = (() => {
   function validate(values) {
-    const missing = ['main', 'primary', 'support', 'relation'].filter((key) => !String(values[key] || '').trim());
+    const missing = ['main', 'primary', 'support'].filter((key) => !String(values[key] || '').trim());
     return { valid: missing.length === 0, missing };
   }
   return { validate };

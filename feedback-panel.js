@@ -1,5 +1,5 @@
 'use strict';
-const feedbackFields = [['mainIdea','feedback-main','중심 생각'],['primary','feedback-primary','핵심 정보'],['support','feedback-support','보조 정보'],['relation','feedback-relation','관계 설명'],['retell','feedback-retell','다시 말하기(Retell)']];
+const feedbackFields = [['mainIdea','feedback-main','중심 생각'],['primary','feedback-primary','핵심 정보'],['support','feedback-support','보조 정보'],['relation','feedback-relation','왜 이렇게 연결했나요? (선택)'],['retell','feedback-retell','다시 말하기(Retell)']];
 let feedbackState=null, feedbackGeneration=0;
 const feedbackEl=id=>document.getElementById(id);
 function resetFeedbackPanel(){
@@ -26,7 +26,8 @@ function feedbackSubmissionReady(snapshot, flow, receipt){
 }
 feedbackEl('feedback-compare').addEventListener('click',()=>{
   if(!feedbackState)return;
-  feedbackEl('feedback-comparison').textContent=feedbackFields.map(([field,id,label])=>`${label}\n최초: ${feedbackState.snapshot[field]}\n수정: ${feedbackEl(id).value}`).join('\n\n');
+  const display=(field,value)=>field==='relation'&&!value.trim()?'작성하지 않음 (선택)':value;
+  feedbackEl('feedback-comparison').textContent=feedbackFields.map(([field,id,label])=>`${label}\n최초: ${display(field,feedbackState.snapshot[field])}\n수정: ${display(field,feedbackEl(id).value)}`).join('\n\n');
 });
 // 중급 루브릭 피드백(server/ai/feedback.mjs parseFeedback와 같은 형식). 점수는 받지도 표시하지도 않는다.
 const FEEDBACK_CRITERIA=['핵심 내용 포함','변형/자기 언어화','정확성','구조/응집성'];
@@ -48,7 +49,10 @@ function feedbackFormat(f){
   return parts.join('\n\n');
 }
 function RecordAnswers(snapshot){return Object.fromEntries(feedbackFields.map(([field])=>[field,snapshot[field]]));}
-function feedbackDirty(){return !!feedbackState && feedbackFields.some(([field,id])=>feedbackEl(id).value!==feedbackState.savedAnswers[field]);}
+function feedbackDirty(){return !!feedbackState && feedbackFields.some(([field,id])=>{
+  const value=feedbackEl(id).value;
+  return (field==='relation'&&!value.trim()?'':value)!==feedbackState.savedAnswers[field];
+});}
 for(const [,id] of feedbackFields)feedbackEl(id).addEventListener('input',()=>{feedbackEl('revision-status').textContent=feedbackDirty()?'미저장 수정이 있습니다.':'';globalThis.PanelUI?.tone(feedbackEl('revision-status'),'warning');});
 feedbackEl('revision-save').addEventListener('click',async()=>{
   const state=feedbackState,generation=feedbackGeneration,button=feedbackEl('revision-save');

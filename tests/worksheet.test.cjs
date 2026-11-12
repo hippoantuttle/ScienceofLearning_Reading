@@ -7,7 +7,7 @@ const worksheet=require('../worksheet.js');
 const AIContract=require('../ai-client.js');
 const valid={main:'중심 생각',primary:'핵심 정보',support:'보조 정보',relation:'관계 설명'};
 test('필수 입력은 공백만으로 통과할 수 없다',()=>{
- for(const key of Object.keys(valid)) assert.equal(worksheet.validate({...valid,[key]:'  '}).valid,false,key);
+ for(const key of ['main','primary','support']) assert.equal(worksheet.validate({...valid,[key]:'  '}).valid,false,key);
  assert.equal(worksheet.validate(valid).valid,true);
 });
 test('HTML 형식 텍스트는 정오 검사 없이 일반 입력으로 허용한다',()=>{
@@ -53,8 +53,10 @@ test('모의 DOM에서 패널 이벤트 핸들러가 유형 전환·뒤로 가�
  await elements['to-retell'].handlers.click();
  assert.equal(sent.filter(m=>m.action==='TOGGLE_BLUR' && m.enabled).length,0);
  active=tab;
+ elements.relation.value='  ';
  await elements['to-retell'].handlers.click();
  assert.equal(elements['retell-view'].hidden,false);
+ assert.equal(elements.reading.hidden,true,'선택 설명을 포함한 모든 읽기 도움을 함께 가린다');
  assert.equal(sent.filter(m=>m.action==='TOGGLE_BLUR' && m.enabled).length,1);
  await elements['back-to-reading'].handlers.click();
  assert.equal(elements.reading.hidden,false);

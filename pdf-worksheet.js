@@ -5,7 +5,7 @@
 var PdfWorksheet = (() => {
   const TYPES = {claim: '주장–근거', cause: '원인–결과', problem: '문제–해결'};
   const LIMIT = 10000;
-  const NAMES = {mainIdea: '단위별 중심 생각', primary: '핵심 정보', support: '보조 정보', relation: '관계 설명'};
+  const NAMES = {mainIdea: '단위별 중심 생각', primary: '핵심 정보', support: '보조 정보', relation: '왜 이렇게 연결했나요? (선택)'};
 
   function pageLabel(pages) {
     const first = pages[0], last = pages[pages.length - 1];

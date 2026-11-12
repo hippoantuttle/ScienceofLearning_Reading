@@ -24,6 +24,13 @@ test('수정은 최초 제출을 바꾸지 않고 원본과 수정본을 비교�
  t.context.resetFeedbackPanel();assert.equal(t.e['feedback-section'].hidden,true);assert.equal(t.e['feedback-comparison'].textContent,'');
 });
 
+test('선택 설명 공백은 미저장 수정으로 오인하지 않고 비교 화면에서 정상 미작성으로 표시한다',()=>{
+ const t=setup();t.snapshot.relation='';t.context.feedbackSubmissionReady(t.snapshot,t.flow);t.e['feedback-relation'].value='  \n';
+ assert.equal(t.context.feedbackDirty(),false);t.e['feedback-compare'].click();
+ assert.match(t.e['feedback-comparison'].textContent,/왜 이렇게 연결했나요\? \(선택\)\n최초: 작성하지 않음 \(선택\)\n수정: 작성하지 않음 \(선택\)/);
+ t.e['feedback-relation'].value='합성 추가 설명';assert.equal(t.context.feedbackDirty(),true);
+});
+
 test('수정본 실패·만료 시 입력을 유지하고 같은 계정 재로그인 후 이전 요청을 재확인한다',async()=>{
  const t=setup(),client=require('../record-client.js');let pending,fail=true,expired=0;
  const requestId='22222222-2222-4222-8222-222222222222';

@@ -92,6 +92,8 @@ button:disabled { color: var(--muted); background: var(--surface); border-color:
 .structure-link { margin-inline: var(--space-4); padding: var(--space-2) var(--space-3); border-left: 2px solid var(--accent); }
 .structure-link > span { display: block; color: var(--accent); text-align: center; font-size: 1.3rem; }
 .structure-link label { margin-top: 0; }
+.relation-details { margin-block: var(--space-3); }
+.relation-details > summary { cursor: pointer; font-weight: 600; }
 .disclosure { margin-block: var(--space-2); }
 .disclosure summary { cursor: pointer; color: var(--accent); }
 dd { margin-inline-start: var(--space-3); white-space: pre-wrap; overflow-wrap: anywhere; }

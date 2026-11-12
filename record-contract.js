@@ -4,8 +4,8 @@ const RecordContract = (() => {
   const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
   const exact = (value, keys) => value && typeof value === 'object' && !Array.isArray(value) && Object.keys(value).sort().join('|') === [...keys].sort().join('|');
   function answers(value) {
-    if (!exact(value, fields) || fields.some(k => typeof value[k] !== 'string' || !value[k].isWellFormed() || value[k].includes('\0') || !value[k].replace(/^[ \t\n\r\f\v]+|[ \t\n\r\f\v]+$/g,'') || Array.from(value[k]).length > 10000)) throw Error('수정 항목을 모두 작성하세요. 각 항목은 10,000자 이내여야 합니다.');
-    return Object.fromEntries(fields.map(k => [k, value[k]]));
+    if (!exact(value, fields) || fields.some(k => typeof value[k] !== 'string' || !value[k].isWellFormed() || value[k].includes('\0') || (k !== 'relation' && !value[k].replace(/^[ \t\n\r\f\v]+|[ \t\n\r\f\v]+$/g,'')) || Array.from(value[k]).length > 10000)) throw Error('필수 수정 항목을 작성하세요. 추가 연결 설명은 선택입니다. 각 항목은 10,000자 이내여야 합니다.');
+    return Object.fromEntries(fields.map(k => [k, k === 'relation' && !value[k].trim() ? '' : value[k]]));
   }
   function revision(value) {
     if (!exact(value, ['requestId', 'answers']) || !uuid.test(value.requestId)) throw Error('수정본 요청 식별자가 올바르지 않습니다.');

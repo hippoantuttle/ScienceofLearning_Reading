@@ -12,7 +12,7 @@ const sid=n=>'11111111-1111-4111-8111-'+String(n).padStart(12,'0');
 const answers={mainIdea:'합성 중심 생각',primary:'합성 주장',support:'합성 근거',relation:'합성 관계',retell:'합성 Retell'};
 const input=n=>({schemaVersion:1,sessionId:sid(n),structureType:'claim',...answers,reflection:'합성 감상',newWords:'',interests:'',rechecked:false});
 const env={SUPABASE_URL:'https://example.invalid',SUPABASE_PUBLISHABLE_KEY:'public-fixture',ALLOWED_ORIGIN:'chrome-extension://abcdefghijklmnopabcdefghijklmnop'};
-async function fixture(){
+async function fixture({optionalRelation = true} = {}){
   const db=new PGlite();
   await db.exec(`create role anon; create role authenticated;
     create schema auth; grant usage on schema auth,public to authenticated;
@@ -21,6 +21,7 @@ async function fixture(){
     insert into auth.users values ('${A}'),('${B}'),('${C}');`);
   await db.exec(readFileSync(new URL('../server/migrations/001-pilot-draft.sql',import.meta.url),'utf8'));
   await db.exec(readFileSync(new URL('../server/migrations/20261110045614_revision_storage.sql',import.meta.url),'utf8'));
+  if (optionalRelation) await db.exec(readFileSync(new URL('../server/migrations/20261112040245_optional_relation.sql',import.meta.url),'utf8'));
   await db.exec(`insert into pilot_members values ('${A}','participant',true),('${B}','team',true),('${C}','participant',false);`);
   async function asUser(owner,fn){
     return db.transaction(async tx=>{
@@ -66,6 +67,37 @@ async function fixture(){
   const io=token=>client({endpoint:'https://worker.invalid/submissions',getToken:()=>token,fetchImpl:(url,opt)=>request(url.replace('https://worker.invalid/submissions',''),{method:opt.method,body:opt.body?JSON.parse(opt.body):undefined,token,key:opt.headers['Idempotency-Key']})});
   return {db,asUser,trace,request,io};
 }
+
+test('TASK-024 PostgreSQL: 선택 설명 migration 전후, 초기·수정본 빈칸/공백·재조회·멱등·제약·권한', {skip:!PGlite?'로컬 PGlite 설치 필요':false}, async t => {
+  const f = await fixture({optionalRelation:false}); t.after(()=>f.db.close());
+  const saved = await f.request('',{method:'POST',body:input(101)});
+  assert.equal(saved.status,200); const original = await saved.json();
+  assert.equal((await f.request('',{method:'POST',body:{...input(102),relation:''}})).status,503,'기존 DB는 빈 설명을 수용하지 않는다');
+  await f.db.exec(readFileSync(new URL('../server/migrations/20261112040245_optional_relation.sql',import.meta.url),'utf8'));
+  const io = f.io('A'); assert.equal((await io.detail(original.submissionId)).payload.relation,answers.relation,'과거 설명 보존');
+  for (const [index, relation] of ['', ' \t\n', '\u3000', '  합성 설명 유지  '].entries()) {
+    const body = {...input(103+index),relation};
+    const first = await f.request('',{method:'POST',body}); assert.equal(first.status,200);
+    const receipt = await first.json();
+    const reread = await io.detail(receipt.submissionId);
+    assert.equal(reread.payload.relation,relation.trim()?relation:'');
+    assert.equal((await f.request('',{method:'POST',body})).status,200,'동일 스냅샷 재시도');
+    await assert.rejects(f.io('B').detail(receipt.submissionId),e=>e.status===404);
+    const revision = await io.save(receipt.submissionId,{requestId:sid(200+index),answers:{...answers,relation}});
+    assert.equal(revision.revision.answers.relation,relation.trim()?relation:'');
+    assert.equal((await io.readRevision(receipt.submissionId,sid(200+index))).revision.answers.relation,relation.trim()?relation:'');
+    for (const table of ['pilot_submissions','pilot_revisions']) {
+      await assert.rejects(f.db.query('update '+table+' set relation_text=null where id=$1',[table==='pilot_submissions'?receipt.submissionId:revision.revision.id]),e=>e.code==='23502');
+      await assert.rejects(f.db.query('update '+table+' set relation_text=$1 where id=$2',['x'.repeat(10001),table==='pilot_submissions'?receipt.submissionId:revision.revision.id]),e=>e.code==='23514');
+    }
+    await f.db.query('delete from pilot_submissions where id=$1',[receipt.submissionId]);
+    await assert.rejects(io.readRevision(receipt.submissionId,sid(200+index)),e=>e.status===404);
+  }
+  for (const key of ['mainIdea','primary','support','retell']) {
+    assert.equal((await f.request('',{method:'POST',body:{...input(210),[key]:'  ',relation:''}})).status,400);
+    assert.throws(()=>io.save(original.submissionId,{requestId:sid(211),answers:{...answers,[key]:'  ',relation:''}}));
+  }
+});
 test('TASK-015 PostgreSQL: 원본 불변·다중 수정·멱등·경합·소유권·삭제·페이지·재로그인', {skip:!PGlite?'로컬 PGlite 설치 필요: TASK-015 결과 문서 참조':false}, async t=>{
   const f=await fixture();t.after(()=>f.db.close());
   const saved=await f.request('',{method:'POST',body:input(1)});assert.equal(saved.status,200);const original=await saved.json();

@@ -3,7 +3,7 @@ import {handleRecords, original} from './records.mjs';
 import {cohortSettings,cohortAccess} from '../pilot-access.mjs';
 const map={schemaVersion:'schema_version',sessionId:'session_id',structureType:'structure_type',mainIdea:'main_idea',primary:'primary_text',support:'support_text',relation:'relation_text',retell:'retell',reflection:'reflection',newWords:'new_words',interests:'interests',rechecked:'rechecked'};
 const textFields=['mainIdea','primary','support','relation','retell','reflection','newWords','interests'];
-const required=['mainIdea','primary','support','relation','retell'];
+const required=['mainIdea','primary','support','retell'];
 const uuid=/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 function valid(p){return p&&typeof p==='object'&&!Array.isArray(p)&&Object.keys(p).sort().join('|')===Object.keys(map).sort().join('|')&&p.schemaVersion===1&&uuid.test(p.sessionId)&&['claim','cause','problem'].includes(p.structureType)&&typeof p.rechecked==='boolean'&&textFields.every(k=>typeof p[k]==='string'&&p[k].isWellFormed()&&!p[k].includes('\0')&&Array.from(p[k]).length<=10000&&(!required.includes(k)||p[k].replace(/^[ \t\n\r\f\v]+|[ \t\n\r\f\v]+$/g,'').length>0));}
 export function createHandler(fetchImpl=fetch){return async(req,env)=>{
@@ -39,6 +39,7 @@ export function createHandler(fetchImpl=fetch){return async(req,env)=>{
    const {articleTitle,sourceUrl,...legacy}=payload||{};
    if(articleTitle!==undefined || sourceUrl!==undefined){try{contract.article(articleTitle,sourceUrl);}catch{return reply(400,{error:'invalid'});}}
    if(!valid(legacy)||req.headers.get('idempotency-key')!==legacy.sessionId)return reply(400,{error:'invalid'});session=legacy.sessionId;
+   if (!payload.relation.trim()) payload.relation = '';
   }else{const url=new URL(req.url);session=url.searchParams.get('sessionId');if(!uuid.test(session||'')||[...url.searchParams.keys()].some(k=>k!=='sessionId'))return reply(400,{error:'invalid'});}
   const params=new URLSearchParams({owner_id:'eq.'+user.id,session_id:'eq.'+session,select:'*',limit:'1'});const db=base+'/rest/v1/pilot_submissions';
   const read=async()=>{const r=await fetchImpl(db+'?'+params,{method:'GET',headers:upstreamHeaders,redirect:'manual'});if(!r.ok)throw Error('db');const rows=await r.json();if(!Array.isArray(rows))throw Error('db');return rows[0]||null;};

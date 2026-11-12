@@ -47,9 +47,9 @@ function recordsCompare(){
   section.append(recordsText('p','최초 저장: '+recordsDate(recordSelection.savedAt)));
   if(selected)section.append(recordsText('p','선택 수정본 저장: '+recordsDate(selected.savedAt)));
   const dl=document.createElement('dl');
-  for(const [field,label] of [['mainIdea','중심 생각'],['primary','핵심 정보'],['support','보조 정보'],['relation','관계 설명'],['retell','Retell']]){
-    dl.append(recordsText('dt',label+' · 최초본'),recordsText('dd',original[field]));
-    if(selected)dl.append(recordsText('dt',label+' · 저장 수정본'),recordsText('dd',selected.answers[field]));
+  for(const [field,label] of [['mainIdea','중심 생각'],['primary','핵심 정보'],['support','보조 정보'],['relation','왜 이렇게 연결했나요? (선택)'],['retell','Retell']]){
+    dl.append(recordsText('dt',label+' · 최초본'),recordsText('dd',field==='relation'&&!original[field]?.trim()?'작성하지 않음 (선택)':original[field]));
+    if(selected)dl.append(recordsText('dt',label+' · 저장 수정본'),recordsText('dd',field==='relation'&&!selected.answers[field]?.trim()?'작성하지 않음 (선택)':selected.answers[field]));
   }
   const unchanged={structureType:({'claim':'주장–근거','cause':'원인–결과','problem':'문제–해결'})[original.structureType]||'유형 정보 없음',reflection:original.reflection||'입력 없음',newWords:original.newWords||'입력 없음',interests:original.interests||'입력 없음',rechecked:original.rechecked?'원문을 다시 확인함':'다시 확인하지 않음'};
   for(const [field,label] of [['structureType','구조도 유형'],['reflection','감상'],['newWords','새 어휘'],['interests','관심 분야'],['rechecked','원문 재확인 여부']])dl.append(recordsText('dt',label+' · 최초 제출 유지'),recordsText('dd',unchanged[field]));

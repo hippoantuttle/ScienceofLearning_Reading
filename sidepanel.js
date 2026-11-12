@@ -279,6 +279,9 @@ function updateStructureLabels() {
   const [primary, support] = labels[document.getElementById('structure').value] || labels.claim;
   document.getElementById('primary-label').textContent = '핵심 정보 · '+primary;
   document.getElementById('support-label').textContent = '보조 정보 · '+support;
+  const hint = document.getElementById('relation-type-help');
+  if (hint) hint.textContent = ({claim:'이 근거의 어떤 부분이 주장을 뒷받침하나요?',cause:'원문에서는 원인이 결과로 이어지는 과정을 어떻게 설명하나요?',problem:'이 해결책은 문제의 어떤 부분에 대응하나요?'})[document.getElementById('structure').value] || '';
+
 }
 
 // @development-start
@@ -308,6 +311,10 @@ document.getElementById('mock-recommend').addEventListener('click', async () => 
 
 // @development-end
 document.getElementById('structure').addEventListener('change', updateStructureLabels);
+document.getElementById('worksheet').addEventListener('reset', () => {
+  const details = document.getElementById('relation-details');
+  if (details) details.open = false;
+});
 document.getElementById('back').addEventListener('click', () => {
   document.getElementById('reading').hidden = true;
   document.getElementById('preparation').hidden = false;
@@ -432,7 +439,7 @@ document.getElementById('to-review').addEventListener('click',async () => {
     try { const packed = worksheetSubmissionValues(); values = {main:packed.mainIdea, primary:packed.primary, support:packed.support, relation:packed.relation}; typeText = '문서 전체 · ' + typeText; }
     catch (error) { showStatus(error.message, true, retellError); return; }
   }
-  for (const [id,value] of Object.entries({'summary-main':values.main,'summary-primary':values.primary,'summary-support':values.support,'summary-relation':values.relation,'summary-retell':retell,'summary-type':typeText})) document.getElementById(id).textContent = value;
+  for (const [id,value] of Object.entries({'summary-main':values.main,'summary-primary':values.primary,'summary-support':values.support,'summary-relation':values.relation.trim() ? values.relation : '작성하지 않음 (선택)','summary-retell':retell,'summary-type':typeText})) document.getElementById(id).textContent = value;
   document.getElementById('retell-view').hidden = true; document.getElementById('review-view').hidden = false; document.getElementById('step4')?.focus();
   showStatus('원문을 다시 표시했습니다. 답안을 확인하고 저장하세요.');
 });

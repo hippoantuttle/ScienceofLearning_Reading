@@ -48,6 +48,14 @@ test('만료·비활성 안내는 저장본 화면을 비우고 재로그인을 
   const error=Object.assign(Error('다시 로그인하세요.'),{status:401}),t=setup({list:()=>{throw error;}});
   await t.e['records-open'].handlers.click();assert.equal(t.calls.expire,1);assert.equal(t.e['records-detail'].hidden,true);assert.match(t.e['records-status'].textContent,/로그인/);
 });
+
+test('빈 선택 설명은 최초본·수정본 모두 미작성으로 정상 표시한다',async()=>{
+  const t=setup({detail:async()=>({status:'saved',submissionId:id,savedAt:'2026-11-12T00:00:00Z',payload:{mainIdea:'합성',primary:'합성',support:'합성',relation:'',retell:'합성'}}),revisions:async()=>({items:[{id:'blank-revision',savedAt:'2026-11-12T01:00:00Z',answers:{mainIdea:'합성 수정',primary:'합성',support:'합성',relation:'',retell:'합성'}}],nextCursor:null})});
+  await t.e['records-open'].handlers.click();await t.ctx.recordsSelect(id);
+  t.e['records-versions'].value='blank-revision';t.e['records-versions'].handlers.change();
+  assert.equal((t.e['records-content'].textContent.match(/작성하지 않음 \(선택\)/g)||[]).length,2);
+  assert.match(t.e['records-content'].textContent,/왜 이렇게 연결했나요\? \(선택\)/);
+});
 test('기록 API는 만료·충돌·오프라인을 구분하며 비인증 요청과 부적절한 주소를 거절한다',async()=>{
   for(const status of [401,403,404,409]){
     const io=RecordClient.create({endpoint:'https://example.invalid/submissions',getToken:()=> 'A',fetchImpl:async url=>String(url).endsWith('?capabilities=1')?Response.json({recordsApiVersion:1,ready:true}):Response.json({error:'fixture'},{status})});

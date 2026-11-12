@@ -89,6 +89,15 @@ test('후보 제외와 원문 추가는 재생성하지 않으며 카드 상한�
   assert.deepEqual(editor.read().nodes.map(n=>n.order),[0,1,2,3,4,5,6,7]);
 });
 
+test('블록 재배열은 출처·역할·연결 ID를 보존하고 유효하지 않은 순서는 작업을 바꾸지 않는다',()=>{
+  const editor=Support.createEditor({article,candidateIds:['s0001','s0002']});editor.selectType('claim');
+  for(const id of ['s0001','s0002','s0003'])editor.add(id);
+  editor.place('n1','primary');editor.place('n2','support');editor.place('n3','support');editor.connect('n2','n1','supports');editor.connect('n3','n1','supports');
+  const before=editor.read();editor.reorder(['n3','n1','n2']);const moved=editor.validate();
+  assert.deepEqual(moved.edges,before.edges);assert.deepEqual(moved.nodes.map(n=>[n.id,n.role,n.source,n.order]),[['n3','support','learner_added',0],['n1','primary','ai_candidate',1],['n2','support','ai_candidate',2]]);
+  const saved=editor.read();for(const ids of [['n1','n2'],['n1','n1','n2'],['n1','n2','n9'],null]){assert.throws(()=>editor.reorder(ids));assert.deepEqual(editor.read(),saved);}
+});
+
 test('모드 선택·시작만으로 호출하지 않으며 동의·웹·초급·스위치·계정 검사를 함수에서도 한다', async () => {
   let calls = 0; const adapter = async () => { calls++; return envelope(); };
   for (const extra of [{mode:'independent'},{enabled:false},{accountId:null},{kind:'pdf'},{article:'한 문장.'}]) {

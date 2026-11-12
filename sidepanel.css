@@ -133,3 +133,46 @@ details.dev-only summary { cursor: pointer; color: var(--muted); font-weight: 60
 #guided-work li { padding: var(--space-2); margin-block: var(--space-2); border: 1px solid var(--border); border-radius: var(--radius); }
 #guided-work li p { white-space: pre-wrap; overflow-wrap: anywhere; }
 #guided-work button { margin: .25rem; }
+#guided-work .guided-sentence-pick[aria-pressed="true"],
+#guided-edges button[aria-pressed="true"] { background: var(--accent); color: var(--accent-fg); }
+.guided-board { position: relative; display: grid; gap: 2rem; padding: 1rem 1.75rem 1.75rem; }
+.guided-board[hidden] { display: none; }
+.guided-board .guided-zone { position: relative; border: 0; padding: 0; margin: 0; min-width: 0; }
+.guided-zone-heading { position: relative; z-index: 2; display: flex; align-items: center; flex-wrap: wrap; justify-content: space-between; gap: .35rem; margin-bottom: 1.5rem; pointer-events: none; }
+.guided-zone-heading button, .guided-zone-heading h4 { pointer-events: auto; }
+.guided-zone-heading h4 { margin: 0; font-size: .95rem; }
+.guided-zone-heading button { font-size: .8rem; padding: .3rem .4rem; }
+.guided-block-list { display: grid; gap: 2rem; padding: 0; margin: 0; list-style: none; }
+#guided-nodes .guided-empty { border: 1px dashed var(--border); color: var(--muted); padding: var(--space-3); margin: 0; }
+#guided-nodes .guided-block { position: relative; z-index: 2; margin: 0; padding: 1.5rem; border: 1px solid var(--border); border-radius: var(--radius); background: color-mix(in srgb, var(--accent) 7%, var(--surface)); }
+#guided-nodes .guided-block[data-role="support"] { background: var(--surface); }
+.guided-block p { margin: 0; }
+.guided-block-origin { color: var(--muted); font-size: .8rem; margin-bottom: .4rem !important; }
+.guided-block-actions { display: flex; flex-wrap: wrap; margin-top: var(--space-2); }
+.guided-block-actions button { font-size: .8rem; padding: .3rem .4rem; }
+.guided-block-actions .guided-drag-handle { cursor: grab; }
+#guided-work .guided-port { position: absolute; display: grid; place-items: center; width: 30px; height: 30px; min-height: 0; margin: 0; padding: 0; border: 0; border-radius: 50%; background: transparent; color: var(--accent); touch-action: none; user-select: none; cursor: crosshair; z-index: 2; }
+.guided-port::before { content: ''; position: absolute; inset: 7px; z-index: -1; border: 1.5px solid var(--accent); border-radius: 50%; background: var(--bg); }
+.guided-port[data-side="top"] { left: 50%; top: 0; transform: translate(-50%,-50%); }
+.guided-port[data-side="right"] { left: 100%; top: 50%; transform: translate(-50%,-50%); }
+.guided-port[data-side="bottom"] { left: 50%; top: 100%; transform: translate(-50%,-50%); }
+.guided-port[data-side="left"] { left: 0; top: 50%; transform: translate(-50%,-50%); }
+#guided-work .guided-port[data-active="true"] { color: var(--accent-fg); }
+.guided-port[data-active="true"]::before { background: var(--accent); }
+.guided-port[data-target="true"]::before { border-width: 3px; }
+.guided-port:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.guided-wires { position: absolute; z-index: 1; inset: 0; width: 100%; height: 100%; pointer-events: none; overflow: visible; }
+.guided-wire { stroke: var(--accent); stroke-width: 1.5; }
+.guided-wire[data-selected="true"] { stroke-width: 3; }
+.guided-wire[data-invalid="true"] { stroke: var(--danger); stroke-dasharray: 5 4; }
+.guided-wire-hit { pointer-events: stroke; cursor: default; }
+#guided-edges { list-style: none; padding: 0; }
+#guided-edges li { border: 0; padding: 0; margin: 0; }
+#guided-edge-tools:not([hidden]) { display: flex; align-items: center; flex-wrap: wrap; gap: var(--space-2); }
+#guided-edge-tools[hidden] { display: none; }
+@media (pointer: coarse) {
+  #guided-work .guided-port { width: 44px; height: 44px; }
+  .guided-port::before { inset: 14px; }
+  .guided-block-list { gap: 3rem; }
+  .guided-zone-heading button, .guided-block-actions button, #guided-edges button, #guided-delete-edge { min-height: 44px; }
+}

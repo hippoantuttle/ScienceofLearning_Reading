@@ -1,12 +1,14 @@
 # [TASK-024] 초급 기능 통합 개발 결과
 
+최신 v8 제품 UI·검사·설치본은 [블록 UI 반영 결과](TASK-024-블록UI-결과.md)를 따른다. 현재 연결 설치본은 `task024-blocks-team5-ai-02`이며 아래 v5/v6 UI 기록보다 우선한다.
+
 ## 결과 요약
-- 상태: **로컬 통합 구현·자동 검증 완료 / 실제 Chrome·모델·원격 검증 대기**. TASK 전체의 사람 수용·운영 완료는 아니다.
-- 요청서: `C:\Users\patri\ScienceofLearning_Reading\.claude\worktrees\guided-reading\docs\tasks\TASK-024-초급-문장후보-구조화.md` v6.
+- 상태: **로컬 통합 구현·DB/Worker 적용·합성 원격 검증·후보 활성화 완료 / 실제 Google·Chrome·모델 의미 검증 대기**. 최신 배포·설치본·운영 보존·미검증은 [서버 적용 결과](TASK-024-서버적용-결과.md)를 따른다. TASK 전체의 사람 수용 완료는 아니다.
+- 요청서: `C:\Users\patri\ScienceofLearning_Reading\.claude\worktrees\guided-reading\docs\tasks\TASK-024-초급-문장후보-구조화.md` v7. 아래 v5/v6 항목은 각 시점의 로컬 개발 기록이다.
 - 실행 위치: `C:\Users\patri\ScienceofLearning_Reading\.claude\worktrees\guided-reading`, 브랜치 `feature/guided-reading`, 시작 HEAD `91288c2`.
 - 초급 화면·전용 후보 API·v2 지원 맥락/최초 그래프 저장·조회·피드백·설치 패키지 연결을 구현했다. 이전 1차 결과는 `git show 91288c2:docs/tasks/TASK-024-결과.md`에서 확인할 수 있다.
 - 자동 전체 검사 **283개 통과 / 실패 0 / skip 0**, 약 28.4초. 네트워크 차단 초급 UI 검토본을 준비했다.
-- 서버·제품 클라이언트 스위치 기본 false. 원격 DB/Worker·실제 모델/자료 전송·기능 활성화·신규 커밋·main 병합·push는 하지 않았다.
+- v5 로컬 개발 당시 서버·제품 클라이언트 스위치는 기본 false였고 원격 적용은 하지 않았다. 이후 v7 사용자 승인으로 DB/Worker와 후보 활성화까지 진행했다. 실제 모델 호출·신규 커밋·main 병합·push는 이번 서버 적용에서도 하지 않았다.
 
 ## 변경 파일과 동작
 - `guided-panel.js`, `sidepanel.html/js/css`, `reading-support.js`, `pilot-ai-panel.js`: 웹 글의 도움 방식 선택(중급 기본) → 명시 요청 → 원문 후보 → 주장–근거 기본 유형(변경 가능)과 빈 역할/연결에서 직접 구성 → 자기 말 중심 생각 → Retell. 원문에서 추가/제외, 2–8개 카드와 최대 16개 직접 연결, 클릭/키보드 조작, 선택 설명, 실패/미지원 시 직접 작성 경로. 중급/PDF 기존 순서 유지.

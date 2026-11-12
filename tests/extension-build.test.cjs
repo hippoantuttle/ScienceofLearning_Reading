@@ -62,18 +62,22 @@ test('검토 전용 산출물은 네트워크 권한과 연결을 차단하며 �
 
 function panelFixture(files, fetchImpl, storageData = {}) {
   const html = files['sidepanel.html'].toString(), elements = {};
+  let fixtureDocument;
   function element(tag='div'){
-    return {tag,value:'',hidden:false,disabled:false,checked:false,children:[],attrs:{},handlers:{},classList:{toggle(){}},_text:'',
+    return {tag,tagName:tag.toUpperCase(),value:'',hidden:false,disabled:false,checked:false,children:[],attrs:{},handlers:{},classList:{toggle(){},add(){}},_text:'',
       get textContent(){return this._text+this.children.map(c=>c.textContent).join('');},set textContent(v){this._text=String(v);this.children=[];},
-      setAttribute(k,v){this.attrs[k]=v;},removeAttribute(k){delete this.attrs[k];},
-      addEventListener(k,v){const old=this.handlers[k];this.handlers[k]=old?async(...args)=>{await old(...args);return v(...args);}:v;},focus(){},reset(){},
+      setAttribute(k,v){this.attrs[k]=v;},getAttribute(k){return this.attrs[k]??null;},removeAttribute(k){delete this.attrs[k];},
+      addEventListener(k,v){const old=this.handlers[k];this.handlers[k]=old?async(...args)=>{await old(...args);return v(...args);}:v;},removeEventListener(k,v){if(this.handlers[k]===v)delete this.handlers[k];},focus(){fixtureDocument.activeElement=this;},reset(){},
+      matches(selector){return selector.split(',').includes(this.tag.toLowerCase());},
+      setPointerCapture(id){this.capture=id;},hasPointerCapture(id){return this.capture===id;},releasePointerCapture(){this.capture=null;},
+      getBoundingClientRect(){const side=this.attrs['data-side'],id=this.attrs['data-port-node'];const cx=id==='n1'?120:180,cy=id==='n1'?100:340;const dx={left:-70,right:70,top:0,bottom:0}[side]||0,dy={top:-60,bottom:60,left:0,right:0}[side]||0;return side?{left:cx+dx-15,top:cy+dy-15,width:30,height:30}:{left:0,top:0,width:300,height:700};},
       append(...items){for(const x of items){x.parent=this;this.children.push(x);}},prepend(x){x.parent=this;this.children.unshift(x);},
       insertBefore(x,before){x.parent=this;this.children=this.children.filter(c=>c!==x);const at=this.children.indexOf(before);this.children.splice(at<0?this.children.length:at,0,x);},
       remove(){if(this.parent)this.parent.children=this.parent.children.filter(c=>c!==this);},querySelector(selector){return selector==='option[value=""]'?this.children.find(c=>c.value==='')||null:null;},
       selectedOptions:[{textContent:'주장–근거'}]};
   }
   for (const tag of html.matchAll(/<[^>]+\bid="([^"]+)"[^>]*>/g)) {
-    const id=tag[1];elements[id]=Object.assign(element(),{value:id==='structure'?'claim':id==='reading-mode'?'independent':'',hidden:/\shidden\b/.test(tag[0]),disabled:/\sdisabled\b/.test(tag[0])});
+    const id=tag[1];elements[id]=Object.assign(element(tag[0].match(/^<([\w-]+)/)[1]),{value:id==='structure'?'claim':id==='reading-mode'?'independent':'',hidden:/\shidden\b/.test(tag[0]),disabled:/\sdisabled\b/.test(tag[0])});
   }
   const tab = {id:1, windowId:2, url:'https://article.example.org/synthetic', title:'합성 제목'}, events = {}, calls = {blur:0, restore:0, network:0};
   const chrome = {windows:{getCurrent:async()=>({id:2})}, scripting:{executeScript:async()=>{}}, tabs:{
@@ -93,7 +97,8 @@ function panelFixture(files, fetchImpl, storageData = {}) {
   const worker=vm.createContext({chrome:workerChrome,URL,URLSearchParams,TextEncoder,AbortController,setTimeout,clearTimeout,crypto:globalThis.crypto,atob,btoa,console:{info(){},error(){}},fetch:fetchImpl});
   worker.importScripts=(...names)=>{for(const name of names)vm.runInContext(files[name].toString(),worker,{filename:name});};
   vm.runInContext(files['background.js'].toString(),worker,{filename:'background.js'});
-  const context = vm.createContext({document:{getElementById:id=>elements[id] || null, createElement:element,querySelectorAll:()=>[]}, chrome, URL, URLSearchParams, TextEncoder, TextDecoder, AbortController, setTimeout, clearTimeout,
+  fixtureDocument={getElementById:id=>elements[id] || null,createElement:element,createElementNS:(_ns,tag)=>element(tag),querySelectorAll:()=>[],activeElement:null};
+  const context = vm.createContext({document:fixtureDocument, chrome, URL, URLSearchParams, TextEncoder, TextDecoder, AbortController, setTimeout, clearTimeout,
     crypto:globalThis.crypto, structuredClone, atob, btoa,
     confirm:()=>true, MutationObserver:class {observe(){}}, fetch:async(...args)=>{calls.network++;if(fetchImpl)return fetchImpl(...args);throw Error('NETWORK_BLOCKED');}});
   for (const match of html.matchAll(/<script src="([^"]+)"/g)) vm.runInContext(files[match[1]].toString(), context, {filename:match[1]});
@@ -101,7 +106,96 @@ function panelFixture(files, fetchImpl, storageData = {}) {
 }
 
 async function waitFor(check){for(let n=0;n<200;n++){if(check())return;await new Promise(r=>setTimeout(r,5));}assert.fail('합성 패널 상태 전환 대기 초과');}
+function findBoardElement(t,key){
+  const walk=node=>node?.attrs?.['data-board-focus']===key?node:node?.children?.map(walk).find(Boolean);
+  const result=walk(t.elements['guided-nodes'])||walk(t.elements['guided-edges']);assert.ok(result,'블록 조작 요소 '+key);return result;
+}
 const guidedArticle='합성 도서관은 주말에도 문을 연다. 주민들이 주말 운영을 요청했다. 자원봉사자가 운영을 돕는다.';
+async function startBlockReview(type='claim') {
+  const t=panelFixture(assemble({reviewOnly:true,guidedReview:true}).files,null,{__articleText:guidedArticle}),e=t.elements;
+  await e.analyze.handlers.click();e['reading-mode'].value='guided';await e['reading-mode'].handlers.change();
+  await e['start-reading'].handlers.click();e.structure.value=type;await e.structure.handlers.change();
+  e['guided-source-picker'].open=true;await e['guided-source-picker'].handlers.toggle();
+  for(const [index,role] of [[0,'primary'],[1,'support']]) {
+    await e['guided-source-list'].children[index].children[1].handlers.click();
+    await findBoardElement(t,'place:'+role).handlers.click();
+  }
+  return t;
+}
+
+test('블록 설치본: 세 유형의 네 변 연결점·두 번 클릭·기존 관계 방향·서버 형식',async()=>{
+  for(const [type,from,to,relationType] of [['claim','n2','n1','supports'],['cause','n1','n2','causes'],['problem','n2','n1','addresses']]) {
+    const t=await startBlockReview(type);
+    for(const id of ['n1','n2'])for(const side of ['top','right','bottom','left'])assert.ok(findBoardElement(t,'port:'+id+':'+side));
+    assert.equal(vm.runInContext('guidedSession.editor.read().edges.length',t.context),0,'배치만으로 연결 생성 안 함');
+    await findBoardElement(t,'port:n1:bottom').handlers.click();
+    await findBoardElement(t,'port:n2:top').handlers.click();
+    const g=JSON.parse(vm.runInContext('JSON.stringify(guidedSession.editor.validate())',t.context));
+    assert.deepEqual(g.edges,[{from,to,relationType}]);
+    assert.equal(g.nodes.length,2);assert.equal(t.calls.network,0);
+    assert.equal('guided-from' in t.elements,false);assert.equal('guided-to' in t.elements,false);assert.equal('guided-relation' in t.elements,false);
+  }
+});
+
+test('블록 설치본: 선 삭제·입력란 Delete 보호·문장/설명 보존·Esc 취소·무효화 뒤 콜백 차단',async()=>{
+  const t=await startBlockReview(),e=t.elements;
+  e.relation.value='직접 작성한 연결 이유';
+  await findBoardElement(t,'port:n2:right').handlers.click();await findBoardElement(t,'port:n1:left').handlers.click();
+  const before=vm.runInContext('JSON.stringify(guidedSession.editor.read().nodes)',t.context);
+  const oldPort=findBoardElement(t,'port:n2:right'),keyboard=e['guided-work'].handlers.keydown;
+  let prevented=0;
+  await keyboard({key:'Delete',target:e.relation,preventDefault(){prevented++;}});
+  assert.equal(prevented,0);assert.equal(vm.runInContext('guidedSession.editor.read().edges.length',t.context),1);
+  await keyboard({key:'Delete',target:e['guided-delete-edge'],preventDefault(){prevented++;}});
+  assert.equal(vm.runInContext('guidedSession.editor.read().edges.length',t.context),0);
+  assert.equal(vm.runInContext('JSON.stringify(guidedSession.editor.read().nodes)',t.context),before);
+  assert.equal(e.relation.value,'직접 작성한 연결 이유');assert.equal(e['guided-edge-tools'].hidden,true);
+  await findBoardElement(t,'port:n2:top').handlers.click();
+  await keyboard({key:'Escape',target:e['guided-nodes'],preventDefault(){}});
+  await findBoardElement(t,'port:n1:bottom').handlers.click();
+  assert.equal(vm.runInContext('guidedSession.editor.read().edges.length',t.context),0,'Esc로 첫 연결점 선택이 취소됐다');
+  await findBoardElement(t,'port:n2:top').handlers.click();await e['guided-delete-edge'].handlers.click();
+  assert.equal(vm.runInContext('guidedSession.editor.read().edges.length',t.context),0);
+  vm.runInContext('guidedInvalidate()',t.context);
+  await oldPort.handlers.click();await keyboard({key:'Delete',target:e['guided-nodes'],preventDefault(){}});
+  assert.equal(e['guided-nodes'].children.length,0);assert.equal(e['guided-edge-tools'].hidden,true);
+});
+
+test('블록 설치본: 드래그 연결·포인터 취소와 재배열은 기존 출처·연결을 유지한다',async()=>{
+  const t=await startBlockReview(),e=t.elements;
+  const start=findBoardElement(t,'port:n2:top');
+  assert.equal(start.parent.draggable,false,'연결점을 감싼 블록이 HTML 드래그를 가로채지 않는다');
+  assert.equal(findBoardElement(t,'drag:n2').draggable,true,'블록 이동은 별도 손잡이에서 시작한다');
+  const down={button:0,pointerId:1,clientX:180,clientY:280,stopPropagation(){}};
+  await start.handlers.pointerdown(down);await start.handlers.pointermove({pointerId:1,clientX:120,clientY:160});
+  await start.handlers.pointercancel();
+  assert.equal(vm.runInContext('guidedSession.editor.read().edges.length',t.context),0);
+  await start.handlers.pointerdown(down);await start.handlers.pointermove({pointerId:1,clientX:120,clientY:160});
+  await start.handlers.pointerup({pointerId:1,clientX:120,clientY:160});
+  assert.equal(vm.runInContext('guidedSession.editor.read().edges.length',t.context),1);
+  await e['guided-source-list'].children[2].children[1].handlers.click();await findBoardElement(t,'place:support').handlers.click();
+  await findBoardElement(t,'port:n3:right').handlers.click();await findBoardElement(t,'port:n1:right').handlers.click();
+  const oldEdges=vm.runInContext('JSON.stringify(guidedSession.editor.read().edges)',t.context);
+  await findBoardElement(t,'up:n3').handlers.click();
+  const g=JSON.parse(vm.runInContext('JSON.stringify(guidedSession.editor.validate())',t.context));
+  assert.deepEqual(g.nodes.map(n=>n.sentenceId),['s0001','s0003','s0002']);assert.deepEqual(g.nodes.map(n=>n.order),[0,1,2]);
+  assert.equal(JSON.stringify(g.edges),oldEdges);assert.ok(g.nodes.every(n=>n.source==='learner_added'));
+  assert.match(vm.runInContext('guidedSession.editor.textFields().support',t.context),/^자원봉사자가/);
+});
+
+test('블록 설치본: 원문 드래그 배치와 유형 변경은 기존 연결을 자동 재해석하지 않는다',async()=>{
+  const t=await startBlockReview(),e=t.elements;
+  const walk=node=>node.attrs?.['data-board-role']==='support'?node:node.children?.map(walk).find(Boolean);
+  const zone=walk(e['guided-nodes']);
+  await zone.handlers.drop({preventDefault(){},stopPropagation(){},dataTransfer:{getData:()=> 'reading-sentence:s0003'}});
+  assert.equal(vm.runInContext('guidedSession.editor.read().nodes.length',t.context),3);
+  await findBoardElement(t,'port:n2:left').handlers.click();await findBoardElement(t,'port:n1:right').handlers.click();
+  const edges=vm.runInContext('JSON.stringify(guidedSession.editor.read().edges)',t.context);
+  e.structure.value='cause';await e.structure.handlers.change();
+  assert.equal(vm.runInContext('JSON.stringify(guidedSession.editor.read().edges)',t.context),edges);
+  assert.match(e['guided-edges'].textContent,/역할\/유형 확인 필요/);
+  await e['guided-to-main'].handlers.click();assert.equal(e['main-idea'].disabled,true);
+});
 test('초급 설치본: 명시 요청→빈 역할/연결→직접 배치/연결→중심 생각→Retell→v2 저장/재조회',async()=>{
  const {createHandler}=await import('../server/submissions/worker.mjs');
  const {createPilotWorker}=await import('../server/ai/pilot-worker.mjs');
@@ -129,18 +223,21 @@ test('초급 설치본: 명시 요청→빈 역할/연결→직접 배치/연결
  assert.equal(models,1);assert.equal(e.structure.value,'claim');assert.equal(e['main-idea-block'].hidden,false);assert.equal(e['main-idea'].disabled,true);assert.equal(e['to-retell'].hidden,false);assert.equal(e['to-retell'].disabled,true);
  assert.equal(vm.runInContext('guidedSession.editor.read().nodes.length',t.context),0);
  e.structure.value='claim';await e.structure.handlers.change();
- for(let n=0;n<2;n++)await e['guided-candidates'].children[n].children[1].handlers.click();
- for(const [index,role]of [[0,'primary'],[1,'support']]){const select=e['guided-nodes'].children[index].children[1];select.value=role;await select.handlers.change();}
+ for(const [index,role]of [[0,'primary'],[1,'support']]){await e['guided-candidates'].children[index].children[1].handlers.click();await findBoardElement(t,'place:'+role).handlers.click();}
  await e['guided-to-main'].handlers.click();assert.equal(e['main-idea'].disabled,true,'미연결은 진행 차단');
- e['guided-from'].value='n2';e['guided-to'].value='n1';e['guided-relation'].value='supports';await e['guided-connect'].handlers.click();
+ await findBoardElement(t,'port:n2:right').handlers.click();await findBoardElement(t,'port:n1:left').handlers.click();
+ const wireBeforeRetell=findBoardElement(t,'port:n2:top');
  await e['guided-to-main'].handlers.click();assert.equal(e['main-idea-block'].hidden,false);assert.equal(e['main-idea'].disabled,false);assert.equal(e['to-retell'].disabled,false);
  e['main-idea'].value='주민의 필요를 반영해 도서관 운영을 넓혔다.';e.relation.value='';
  await e['to-retell'].handlers.click();assert.equal(e.reading.hidden,true);assert.equal(e['retell-view'].hidden,false);
+ assert.equal(e['guided-nodes'].hidden,true);assert.equal(e['guided-edges'].hidden,true);assert.equal(e['guided-edge-tools'].hidden,true);
+ await wireBeforeRetell.handlers.click();assert.equal(e['guided-nodes'].hidden,true,'Retell의 오래된 연결점 콜백으로 도움을 다시 열지 않는다');
  assert.equal(vm.runInContext('guidedSession.gate.visibleCandidates().length',t.context),0);
  e['retell-input'].value='합성 마을의 주민 요청에 따라 도서관은 주말에 운영한다.';await e['to-review'].handlers.click();
  assert.equal(e['review-view'].hidden,false);assert.match(e['summary-graph'].textContent,/AI 문장 후보를 본 수행/);
  await e['submission-send'].handlers.click();assert.match(e['submission-status'].textContent,/저장했습니다/);
  assert.equal(row.schema_version,2);assert.equal(row.learning_support.candidateExposure,true);assert.equal(row.learning_support.graph.nodes.length,2);assert.equal(row.relation_text,'');
+ assert.deepEqual(Object.keys(row.learning_support.graph.edges[0]).sort(),['from','relationType','to'],'연결점 위치는 기존 서버 계약에 넣지 않는다');
  assert.equal(row.learning_support.graph.nodes.some(n=>n.sentenceId==='s0003'),false,'미사용 후보 텍스트 저장 없음');
  assert.equal(vm.runInContext('panelFlow().verifiedSnapshot().learningSupport.graph.edges.length',t.context),1);
  assert.equal(models,1,'제출/재조회/모드 선택의 자동 AI 호출 없음');
@@ -155,6 +252,9 @@ test('초급 설치본: 명시 요청→빈 역할/연결→직접 배치/연결
   assert.equal(e['guided-candidates'].children.length,3);assert.equal(vm.runInContext('guidedSession.gate.state().candidateExposure',t.context),true);
  }
  assert.equal(models,1,'복귀는 기존 후보만 복원하고 새 AI 요청을 하지 않는다');
+ await findBoardElement(t,'remove:n1').handlers.click();await findBoardElement(t,'remove:n2').handlers.click();
+ assert.equal(vm.runInContext('guidedSession.editor.read().nodes.length',t.context),0);
+ assert.equal(vm.runInContext('guidedSession.gate.state().candidateExposure',t.context),true,'블록을 모두 빼도 실제 후보 노출 이력 유지');
 });
 
 test('초급 설치본: 늦은 후보 결과·로그아웃 결과 차단, 직접 작성 뒤에도 노출 이력 유지',async()=>{

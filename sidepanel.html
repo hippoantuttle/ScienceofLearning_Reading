@@ -36,6 +36,7 @@
   <!-- @development-end -->
   <script src="sidepanel.js" defer></script>
   <script src="support-view.js" defer></script>
+  <script src="guided-board.js" defer></script>
   <script src="guided-panel.js" defer></script>
   <script src="submission-panel.js" defer></script>
   <script src="pilot-ai-panel.js" defer></script>
@@ -189,11 +190,11 @@
         <div id="guided-graph-controls">
           <h3>문장 후보</h3><ol id="guided-candidates"></ol>
           <details id="guided-source-picker"><summary>원문에서 추가</summary><ol id="guided-source-list"></ol></details>
-          <h3>내가 배치한 문장</h3><ol id="guided-nodes"></ol>
-          <label for="guided-from">연결 시작</label><select id="guided-from"></select>
-          <label for="guided-to">연결 도착</label><select id="guided-to"></select>
-          <label for="guided-relation">관계</label><select id="guided-relation"></select>
-          <button id="guided-connect" type="button">선택한 문장 연결</button><ul id="guided-edges"></ul>
+          <h3>문장 블록 배치·연결</h3>
+          <p id="guided-board-hint" class="hint" role="status" aria-live="polite">문장을 고르고 역할 자리에 놓으세요. 블록의 + 연결점끼리 끌거나 차례로 눌러 연결할 수 있습니다.</p>
+          <div id="guided-nodes" class="guided-board" role="group" aria-label="내가 배치한 문장 블록"></div>
+          <ul id="guided-edges" class="guided-edge-list" aria-label="내가 만든 연결"></ul>
+          <div id="guided-edge-tools" hidden><span>선택한 연결</span><button id="guided-delete-edge" type="button">선택한 선 삭제</button><span class="hint">Delete 키로도 삭제</span></div>
         </div>
         <button id="guided-to-main" type="button" class="primary">구조도 확인 · 중심 생각 작성</button>
       </section>

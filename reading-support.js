@@ -29,6 +29,11 @@ var ReadingSupport = (() => {
         if (!node || !['primary','support'].includes(role) || !structureType) throw Error('invalid_placement');
         node.role = role; return read();
       },
+      reorder(nodeIds) {
+        if (!Array.isArray(nodeIds) || nodeIds.length !== nodes.length || new Set(nodeIds).size !== nodes.length || nodeIds.some(id => !nodes.some(n => n.id === id))) throw Error('invalid_order');
+        nodes = nodeIds.map((id,order) => ({...nodes.find(n => n.id === id),order}));
+        return read();
+      },
       exclude(nodeId) {
         if (!nodes.some(n => n.id === nodeId)) throw Error('invalid_card');
         nodes = nodes.filter(n => n.id !== nodeId).map((n,order) => ({...n,order}));

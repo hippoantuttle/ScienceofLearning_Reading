@@ -4,7 +4,7 @@ const guidedEl=id=>document.getElementById(id);
 function guidedIdentity(){try{const f=panelFlow();return f.getToken()&&(f.getAccountId?.()||f.getIdentity?.());}catch{return null;}}
 function resetGuided(){
   if(!guidedSession&&SubmissionConfig.guidedReadingEnabled!==true)return;
-  guidedSession?.gate?.dispose();guidedSession=null;guidedInvalidated=false;
+  guidedSession?.board?.dispose();guidedSession?.gate?.dispose();guidedSession=null;guidedInvalidated=false;
   for(const id of ['guided-work','guided-consent'])if(guidedEl(id))guidedEl(id).hidden=true;
   for(const id of ['guided-candidates','guided-nodes','guided-edges','guided-source-list','summary-graph'])if(guidedEl(id))guidedEl(id).textContent='';
   if(guidedEl('reading-mode')){guidedEl('reading-mode').disabled=false;guidedEl('reading-mode').value='independent';}
@@ -19,7 +19,7 @@ function resetGuided(){
 }
 function guidedInvalidate(){
   if(guidedSession?.mode!=='guided')return;
-  guidedSession.gate?.dispose();guidedSession.editor=null;guidedSession.snapshot=null;guidedSession.returnState=null;guidedSession.manualDraft=null;guidedInvalidated=true;
+  guidedSession.board?.dispose();guidedSession.board=null;guidedSession.gate?.dispose();guidedSession.editor=null;guidedSession.snapshot=null;guidedSession.returnState=null;guidedSession.manualDraft=null;guidedInvalidated=true;
   for(const id of ['guided-candidates','guided-nodes','guided-edges','guided-source-list','summary-graph'])if(guidedEl(id))guidedEl(id).textContent='';
   guidedEl('guided-status').textContent='계정이나 글이 변경되었습니다. 글을 다시 연결해 새 훈련을 시작하세요.';
 }
@@ -102,30 +102,51 @@ function guidedBegin(){
   s.revision=(s.revision||0)+1;s.stage='structuring';guidedEl('main-idea-block').hidden=false;guidedEl('main-idea').disabled=true;guidedEl('to-retell').hidden=false;guidedEl('to-retell').disabled=true;guidedEl('guided-retry').hidden=true;
   return s;
 }
-function guidedAction(fn){try{fn();}catch(e){guidedEl('guided-status').textContent=['글을 다시 연결하세요.'].includes(e.message)?e.message:'유형·양쪽 역할·연결 방향을 확인하세요. 사용 문장은 2~8개이며 각 문장에 연결이 필요합니다.';}}
+function guidedAction(fn){try{const result=fn();return result===undefined?true:result;}catch(e){guidedEl('guided-status').textContent=['글을 다시 연결하세요.'].includes(e.message)?e.message:'유형·양쪽 역할·연결 방향을 확인하세요. 사용 문장은 2~8개이며 각 문장에 연결이 필요합니다.';return false;}}
 function guidedSentenceButton(s,sentence,candidate=false){
   const row=document.createElement('li'),text=document.createElement('p');text.textContent=sentence.text;row.append(text);
-  const add=document.createElement('button');add.type='button';add.textContent='구조도에 사용';add.setAttribute('aria-label',sentence.text+' 문장을 구조도에 사용');
-  add.addEventListener('click',()=>guidedAction(()=>{guidedBegin();s.editor.add(sentence.id);guidedRender();}));row.append(add);
-  if(candidate){const exclude=document.createElement('button');exclude.type='button';exclude.textContent='후보 제외';exclude.addEventListener('click',()=>guidedAction(()=>{guidedBegin();s.excluded.add(sentence.id);row.remove();}));row.append(exclude);}
+  const add=document.createElement('button');add.type='button';add.textContent='문장 선택';add.className='guided-sentence-pick';add.setAttribute('aria-label',sentence.text+' 문장 선택');add.setAttribute('aria-pressed',String(s.selectedSentence===sentence.id));add.draggable=true;
+  (s.pickButtons||(s.pickButtons=[])).push({id:sentence.id,button:add});
+  add.addEventListener('click',()=>guidedAction(()=>{guidedBegin();s.selectedSentence=sentence.id;guidedEl('guided-board-hint').textContent='선택한 문장을 놓을 역할 자리를 고르세요.';guidedRender();}));
+  add.addEventListener('dragstart',event=>{if(!guidedCurrent(s)||!guidedAction(()=>guidedBegin())){event.preventDefault();return;}event.dataTransfer.setData('text/plain','reading-sentence:'+sentence.id);});row.append(add);
+  if(candidate){const exclude=document.createElement('button');exclude.type='button';exclude.textContent='후보 제외';exclude.addEventListener('click',()=>guidedAction(()=>{guidedBegin();s.excluded.add(sentence.id);if(s.selectedSentence===sentence.id)s.selectedSentence=null;row.remove();guidedRender();}));row.append(exclude);}
   return row;
 }
-function guidedSelect(options,value,label){const select=document.createElement('select');select.setAttribute('aria-label',label);for(const [v,t]of options){const o=document.createElement('option');o.value=v;o.textContent=t;select.append(o);}select.value=value;return select;}
+function guidedUpdateSelection(s){
+  for(const item of s.pickButtons||[]){item.button.setAttribute('aria-pressed',String(s.selectedSentence===item.id));item.button.textContent=s.selectedSentence===item.id?'선택됨':'문장 선택';}
+}
+function guidedBoardAction(s,action){
+  return guidedAction(()=>{
+    if(guidedBegin()!==s||!s.editor)throw Error('글을 다시 연결하세요.');
+    const editor=s.editor;
+    if(action.type==='place'){
+      if(!['primary','support'].includes(action.role))throw Error('role');
+      let graph=editor.read(),node=action.nodeId?graph.nodes.find(n=>n.id===action.nodeId):graph.nodes.find(n=>n.sentenceId===action.sentenceId);
+      if(action.nodeId&&!node)throw Error('node');
+      if(action.beforeId&&action.beforeId!==node?.id&&!graph.nodes.some(n=>n.id===action.beforeId&&n.role===action.role))throw Error('target');
+      if(!node){if(!s.snapshot.sentences.some(n=>n.id===action.sentenceId))throw Error('sentence');editor.add(action.sentenceId);node=editor.read().nodes.find(n=>n.sentenceId===action.sentenceId);}
+      editor.place(node.id,action.role);graph=editor.read();
+      const remaining=graph.nodes.filter(n=>n.id!==node.id);let at=remaining.length;
+      if(action.beforeId&&action.beforeId!==node.id)at=remaining.findIndex(n=>n.id===action.beforeId);
+      else{const last=remaining.map((n,i)=>n.role===action.role?i:-1).filter(i=>i>=0);if(last.length)at=last[last.length-1]+1;}
+      remaining.splice(at,0,node);editor.reorder(remaining.map(n=>n.id));s.selectedSentence=null;
+    }else if(action.type==='reorder')editor.reorder(action.nodeIds);
+    else if(action.type==='exclude')editor.exclude(action.nodeId);
+    else if(action.type==='disconnect')editor.disconnect(action.from,action.to);
+    else if(action.type==='connect'){
+      const existing=editor.read().edges.find(e=>e.from===action.from&&e.to===action.to);
+      if(existing&&existing.relationType!==action.relationType)throw Error('connection');
+      if(!existing)editor.connect(action.from,action.to,action.relationType);
+    }else if(action.type!=='touch')throw Error('action');
+    guidedUpdateSelection(s);return true;
+  });
+}
 function guidedRender(){
   const s=guidedSession;if(!s?.editor||guidedInvalidated)return;
-  const g=s.editor.read(),labels=({claim:['주장','근거'],cause:['원인','결과'],problem:['문제','해결책']})[g.structureType]||['첫 역할','둘째 역할'];
-  const nodes=guidedEl('guided-nodes'),edges=guidedEl('guided-edges');nodes.textContent='';edges.textContent='';
-  for(const n of g.nodes){
-    const li=document.createElement('li'),p=document.createElement('p');p.textContent=`문장 ${n.order+1} · ${n.source==='ai_candidate'?'AI 후보에서 선택':'원문에서 직접 추가'}\n${n.text}`;li.append(p);
-    const role=guidedSelect([['','역할을 선택하세요'],['primary',labels[0]],['support',labels[1]]],n.role||'',`문장 ${n.order+1}의 역할`);
-    role.addEventListener('change',()=>guidedAction(()=>{guidedBegin();s.editor.place(n.id,role.value);guidedRender();}));li.append(role);
-    const remove=document.createElement('button');remove.type='button';remove.textContent=`문장 ${n.order+1} 제거`;remove.addEventListener('click',()=>guidedAction(()=>{guidedBegin();s.editor.exclude(n.id);guidedRender();}));li.append(remove);nodes.append(li);
-  }
-  const opts=[['','문장을 선택하세요'],...g.nodes.map(n=>[n.id,`문장 ${n.order+1} · ${n.text.slice(0,40)}`])];
-  for(const [id,label]of[['guided-from','연결 시작 문장'],['guided-to','연결 도착 문장']]){const old=guidedEl(id);const select=guidedSelect(opts,old.value,label);old.textContent='';for(const o of [...select.children])old.append(o);old.value='';}
-  const rel=guidedEl('guided-relation');rel.textContent='';const blank=document.createElement('option');blank.value='';blank.textContent='관계를 선택하세요';rel.append(blank);
-  if(g.structureType){const o=document.createElement('option');o.value=ReadingSupportContract.relations[g.structureType].type;o.textContent=({claim:'뒷받침함 (근거 → 주장)',cause:'이어짐 (원인 → 결과)',problem:'대응함 (해결책 → 문제)'})[g.structureType];rel.append(o);}
-  for(const e of g.edges){const li=document.createElement('li'),button=document.createElement('button');const a=g.nodes.find(n=>n.id===e.from),b=g.nodes.find(n=>n.id===e.to);li.textContent=`문장 ${a.order+1} → 문장 ${b.order+1} (${({supports:'뒷받침',causes:'원인 → 결과',addresses:'문제에 대응'})[e.relationType]}) `;button.type='button';button.textContent='연결 제거';button.addEventListener('click',()=>guidedAction(()=>{guidedBegin();s.editor.disconnect(e.from,e.to);guidedRender();}));li.append(button);edges.append(li);}
+  if(!s.board)s.board=GuidedBoard.create({root:guidedEl('guided-nodes'),links:guidedEl('guided-edges'),tools:guidedEl('guided-edge-tools'),deleteButton:guidedEl('guided-delete-edge'),eventRoot:guidedEl('guided-work'),
+    read:()=>guidedCurrent(s)&&s.editor?{graph:s.editor.read(),selectedSentence:s.selectedSentence||null}:null,
+    act:action=>guidedBoardAction(s,action),message:text=>{if(guidedCurrent(s))guidedEl('guided-board-hint').textContent=text;}});
+  guidedUpdateSelection(s);s.board.render();
 }
 function guidedSupportValues(base){
   if(guidedInvalidated)throw Error('계정이나 글이 변경되었습니다. 글을 다시 연결하세요.');
@@ -149,8 +170,8 @@ async function guidedAdvance(){
     guidedEl('guided-status').textContent='구조도를 바탕으로 중심 생각을 자기 말로 작성하세요.';
   }catch{guidedEl('guided-status').textContent='구조 유형과 양쪽 역할을 채우고 문장들을 연결하세요. 추가 설명은 비워도 됩니다.';}
 }
-function guidedBeforeRetell(){const s=guidedSession;if(guidedInvalidated)throw Error('글을 다시 연결하세요.');if(s?.mode==='guided'){if(s.stage!=='mainIdea')throw Error('먼저 구조도를 완성하고 중심 생각 작성으로 이동하세요.');guidedSupportValues({structureType:guidedEl('structure').value,primary:guidedEl('primary').value,support:guidedEl('support').value});if(s.gate.state().phase!=='retell')s.gate.beginRetell();}}
-function guidedRevisit(){if(guidedSession?.mode==='guided')guidedSession.gate.revisit();}
+function guidedBeforeRetell(){const s=guidedSession;if(guidedInvalidated)throw Error('글을 다시 연결하세요.');if(s?.mode==='guided'){if(s.stage!=='mainIdea')throw Error('먼저 구조도를 완성하고 중심 생각 작성으로 이동하세요.');guidedSupportValues({structureType:guidedEl('structure').value,primary:guidedEl('primary').value,support:guidedEl('support').value});if(s.gate.state().phase!=='retell')s.gate.beginRetell();s.board?.suspend();}}
+function guidedRevisit(){if(guidedSession?.mode==='guided'){guidedSession.gate.revisit();if(!guidedSession.manual)guidedSession.board?.resume();}}
 guidedEl('reading-mode').addEventListener('change',()=>{if(!guidedSession)guidedPrepare();});
 guidedEl('guided-retry').addEventListener('click',()=>{const s=guidedSession;if(s?.gate?.canRetry())void guidedRequest(s);});
 function guidedRememberView(s){
@@ -167,7 +188,7 @@ function guidedReturn(){
   guidedEl('guided-manual').hidden=s.manual;guidedEl('guided-no-candidates').hidden=s.manual;guidedEl('guided-return').hidden=true;
   guidedEl('guided-source-picker').open=false;
   const list=guidedEl('guided-candidates');list.textContent='';
-  if(!s.manual&&s.snapshot){const ids=s.gate.state().candidateIds;for(const sentence of s.snapshot.sentences.filter(x=>ids.includes(x.id)&&!s.excluded.has(x.id)))list.append(guidedSentenceButton(s,sentence,true));guidedRender();}
+  if(!s.manual&&s.snapshot){const ids=s.gate.state().candidateIds;for(const sentence of s.snapshot.sentences.filter(x=>ids.includes(x.id)&&!s.excluded.has(x.id)))list.append(guidedSentenceButton(s,sentence,true));s.board?.resume();guidedRender();}
   guidedEl('guided-status').textContent='이전 구성 화면으로 돌아왔습니다. 작성한 배치·연결은 유지됩니다. 취소한 AI 요청은 다시 전송하지 않습니다.';
 }
 guidedEl('guided-return').addEventListener('click',()=>guidedAction(guidedReturn));
@@ -178,15 +199,14 @@ guidedEl('guided-no-candidates').addEventListener('click',()=>guidedAction(()=>{
   guidedEl('guided-status').textContent='아래 원문 문장 목록에서 골라 배치하세요. 이전 구성 화면으로 돌아갈 수도 있습니다.';
 }));
 guidedEl('guided-manual').addEventListener('click',()=>guidedAction(()=>{
-  const s=guidedBegin();guidedRememberView(s);s.gate.continueManually();s.manual=true;s.editor=null;guidedEl('manual-map').hidden=false;
-  for(const id of ['guided-candidates','guided-nodes','guided-edges','guided-source-list','summary-graph'])guidedEl(id).textContent='';
+  const s=guidedBegin();guidedRememberView(s);s.gate.continueManually();s.board?.suspend();s.manual=true;s.editor=null;guidedEl('manual-map').hidden=false;
+  for(const id of ['guided-candidates','guided-source-list','summary-graph'])guidedEl(id).textContent='';
   guidedEl('guided-graph-controls').hidden=true;guidedEl('guided-manual').hidden=true;guidedEl('guided-no-candidates').hidden=true;
   guidedEl('primary').value=s.manualDraft?.primary||'';guidedEl('support').value=s.manualDraft?.support||'';
   guidedEl('guided-status').textContent='구조도를 직접 작성한 뒤 중심 생각으로 이동하세요. 이전 구성 화면으로 돌아갈 수 있습니다.';
 }));
 guidedEl('guided-to-main').addEventListener('click',()=>guidedAdvance());
 guidedEl('structure').addEventListener('change',()=>{if(guidedSession?.mode==='guided')guidedAction(()=>{const s=guidedBegin();if(!s.manual){s.editor.selectType(guidedEl('structure').value);guidedRender();}});});
-guidedEl('guided-connect').addEventListener('click',()=>guidedAction(()=>{const s=guidedBegin();s.editor.connect(guidedEl('guided-from').value,guidedEl('guided-to').value,guidedEl('guided-relation').value);guidedRender();}));
 guidedEl('guided-source-picker').addEventListener('toggle',()=>{if(!guidedEl('guided-source-picker').open)return;guidedAction(()=>{const s=guidedBegin();const list=guidedEl('guided-source-list');list.textContent='';for(const sentence of s.snapshot?.sentences||[])list.append(guidedSentenceButton(s,sentence));});});
 for(const id of ['primary','support'])guidedEl(id).addEventListener('input',()=>{if(guidedSession?.mode==='guided'&&guidedSession.manual)guidedAction(()=>guidedBegin());});
 if(SubmissionConfig.guidedReadingEnabled===true)chrome.tabs.onActivated?.addListener(info=>{if(guidedSession?.mode==='guided'&&info.windowId===guidedSession.session.windowId&&info.tabId!==guidedSession.session.tabId)guidedSession.gate.continueManually();});

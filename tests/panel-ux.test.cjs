@@ -68,12 +68,20 @@ test('결과 알림은 항상 보이는 상태 영역이 담당하고 완료 버
   const context=vm.createContext({});vm.runInContext(fs.readFileSync('panel-ui.js','utf8'),context);assert.equal(typeof context.PanelUI.tone,'function');
 });
 test('라이트/다크 본문·보조문구·버튼·상태 텍스트의 지정 대비는 모두 4.5 이상이다',()=>{
-  const css=fs.readFileSync('sidepanel.css','utf8'),blocks=[...css.matchAll(/:root\s*\{([^}]+)\}/g)];
+  const css=fs.readFileSync('ui-theme.css','utf8'),blocks=[...css.matchAll(/:root\s*\{([^}]+)\}/g)];
+  assert.equal(blocks.length,2,'light and dark palettes must both be checked');
   const luminance=hex=>{const rgb=hex.replace('#','').match(/../g).map(n=>parseInt(n,16)/255).map(v=>v<=0.04045?v/12.92:((v+0.055)/1.055)**2.4);return rgb[0]*.2126+rgb[1]*.7152+rgb[2]*.0722;};
   const contrast=(a,b)=>{const x=luminance(a),y=luminance(b);return (Math.max(x,y)+.05)/(Math.min(x,y)+.05);};
-  for(const block of blocks){const colors=Object.fromEntries([...block[1].matchAll(/--([\w-]+):\s*(#[\da-f]{6})/g)].map(m=>[m[1],m[2]]));
+  const aliases=Object.fromEntries([...css.matchAll(/--([\w-]+):\s*var\(--([\w-]+)\)/g)].map(m=>[m[1],m[2]]));
+  for(const block of blocks){const colors=Object.fromEntries([...block[1].matchAll(/--([\w-]+):\s*(#[\da-fA-F]{6});/g)].map(m=>[m[1],m[2]]));
+    for(const [name,target] of Object.entries(aliases))if(colors[target])colors[name]=colors[target];
     for(const fg of ['fg','muted','danger','success','warning','accent'])for(const bg of ['bg','surface'])assert.ok(contrast(colors[fg],colors[bg])>=4.5,fg+'/'+bg);
     assert.ok(contrast(colors['accent-fg'],colors.accent)>=4.5,'primary button');
     assert.ok(contrast(colors.fg,colors['callout-bg'])>=4.5,'callout');
+    for(const status of ['success','warning','error']){
+      assert.ok(contrast(colors['color-text-'+status],colors['color-'+status+'-muted'])>=4.5,status+' callout');
+      assert.ok(contrast(colors['color-on-'+status],colors['color-'+status])>=4.5,status+' badge');
+    }
+    assert.ok(contrast(colors['color-border-emphasized'],colors.surface)>=3,'control boundary');
   }
 });

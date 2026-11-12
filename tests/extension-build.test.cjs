@@ -35,6 +35,11 @@ test('설치본은 허용 목록만 읽고 개발 UI·주소·로컬 설정·서
     const vendorNames = Object.keys(readVendor(root).files);
     assert.ok(vendorNames.includes('vendor/pdfjs/pdf.min.mjs') && vendorNames.some(name => name.startsWith('vendor/pdfjs/cmaps/')));
     assert.deepEqual(Object.keys(result.files).sort(), [...RUNTIME, ...vendorNames, 'manifest.json', 'submission-config.js'].sort());
+    for(const page of ['sidepanel.html','pdf-viewer.html']){
+      const styles=[...result.files[page].toString().matchAll(/<link rel="stylesheet" href="([^"]+)"/g)].map(match=>match[1]);
+      assert.ok(styles.includes('ui-theme.css'),'shared theme is linked in '+page);
+      for(const style of styles)assert.ok(result.files[style]?.length,'packaged stylesheet '+style);
+    }
     const all = Object.values(result.files).map(b => b.toString()).join('\n');
     assert.doesNotMatch(all, /SYNTHETIC_EXCLUDED_SENTINEL|http:\/\/127\.0\.0\.1|submission-config\.local|requestMock|allowRepeatedRecommendations|@development-/);
     assert.doesNotMatch(result.files['sidepanel.html'].toString(), /dev-only|mock-token|local-preview|synthetic-submit/);

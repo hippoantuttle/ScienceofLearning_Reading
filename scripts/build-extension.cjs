@@ -7,7 +7,7 @@ const vm = require('node:vm');
 const {execFileSync} = require('node:child_process');
 const ROOT = path.resolve(__dirname, '..');
 const RUNTIME = Object.freeze([
-  'background.js', 'content.js', 'sidepanel.html', 'sidepanel.css',
+  'background.js', 'content.js', 'sidepanel.html', 'sidepanel.css', 'ui-theme.css',
   'panel-ui.js', 'worksheet.js', 'ai-client.js', 'submission-client.js',
   'sentence-source.js','reading-support-contract.js','learning-support.js','reading-support.js','guided-board.js','guided-panel.js','support-view.js',
   'record-contract.js', 'record-client.js', 'submission-contract.js',

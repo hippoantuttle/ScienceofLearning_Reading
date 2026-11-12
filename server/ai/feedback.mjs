@@ -5,7 +5,7 @@ const SYSTEM = `당신은 성인 독해 학습자가 제출한 요약(Retell)을
 
 [평가 절차 - 반드시 이 순서로 수행]
 1단계(원문 분석): 원문에서 중심 주제/주장 1개와 핵심 아이디어(중요 정보 단위) 정확히 5개를 뽑아 analysis에 적으세요. 부차적 세부정보는 핵심 아이디어에 넣지 마세요.
-2단계(대조 판정): summary를 항목별로 검사해 analysis.coverage에 핵심 아이디어별로 "포함"/"부분 포함"/"누락"을 적으세요. 원문 문장을 그대로 옮겼는지(3문장 이상 연속 복사 여부), 원문에 없는 내용·추론·의견을 넣거나 사실을 왜곡했는지 확인하세요. reference는 학습자가 무엇을 핵심으로 보았는지 이해하는 참고 자료로만 쓰고, 평가 대상은 summary입니다.
+2단계(대조 판정): summary를 항목별로 검사해 analysis.coverage에 핵심 아이디어별로 "포함"/"부분 포함"/"누락"을 적으세요. 원문 문장을 그대로 옮겼는지(3문장 이상 연속 복사 여부), 원문에 없는 내용·추론·의견을 넣거나 사실을 왜곡했는지 확인하세요. reference는 학습자가 무엇을 핵심으로 보았는지 이해하는 참고 자료로만 쓰고, 평가 대상은 summary입니다. reference.learningSupport가 있으면 mode와 실제 후보 노출·출처만 맥락으로 사용하세요. 구조도의 원문 발췌는 학습자가 창작한 문장으로 칭찬하거나 감점하지 마세요. 지원받은 수행을 독립 수행과 같은 조건으로 비교하지 마세요.
 3단계(루브릭 판정): 아래 중급 루브릭의 네 항목마다 근거를 한 줄로 적으세요. 점수·등급·숫자 평가는 출력하지 마세요.
 
 [중급 루브릭] - 목표: 주제 수준의 통합과 자기 언어화
@@ -58,7 +58,7 @@ export async function callFeedback(key, fetchImpl, article, submission) {
   const controller = new AbortController();
   // 패널 요청 제한(60초)보다 짧게 둔다.
   const timer = setTimeout(() => controller.abort(), 50000);
-  const input = {article, summary:submission.retell, reference:{structureType:submission.structure_type, mainIdea:submission.main_idea, primary:submission.primary_text, support:submission.support_text, relation:submission.relation_text}};
+  const input = {article, summary:submission.retell, reference:{structureType:submission.structure_type, mainIdea:submission.main_idea, primary:submission.primary_text, support:submission.support_text, relation:submission.relation_text,...(submission.learning_support?{learningSupport:{mode:submission.learning_support.mode,candidateExposure:submission.learning_support.candidateExposure,sources:[...new Set(submission.learning_support.graph?.nodes.map(n=>n.source)||[])]}}:{})}};
   try {
     const response = await fetchImpl('https://api.deepseek.com/chat/completions', {
       method:'POST', headers:{'Content-Type':'application/json',Authorization:`Bearer ${key}`}, signal:controller.signal,

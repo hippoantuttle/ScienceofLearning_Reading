@@ -5,7 +5,8 @@ const originalColumns = {schemaVersion:'schema_version',sessionId:'session_id',s
 const pageSize = 10;
 function cursor(row) { return row ? row.saved_at + '~' + row.id : null; }
 function pageQuery(search) {
-  if ([...search.keys()].some(k => k !== 'cursor') || search.getAll('cursor').length > 1) throw Error('invalid');
+  if ([...search.keys()].some(k => !['cursor','support'].includes(k)) || search.getAll('cursor').length > 1) throw Error('invalid');
+  if(search.has('support')&&(search.get('support')!=='1'||search.getAll('support').length!==1))throw Error('invalid');
   const value = search.get('cursor');
   if (!value) return null;
   const [time, id, extra] = value.split('~');
@@ -15,9 +16,10 @@ function pageQuery(search) {
 function revision(row) {
   return {id: row.id, requestId: row.request_id, savedAt: row.saved_at, answers: Object.fromEntries(Object.entries(columns).map(([k,c]) => [k,row[c]]))};
 }
-export function original(row) {
+export function original(row, includeSupport=false) {
   const payload = Object.fromEntries(Object.entries(originalColumns).map(([k,c]) => [k,row[c]]));
   if (row.article_title !== null && row.article_title !== undefined) Object.assign(payload, {articleTitle:row.article_title, sourceUrl:row.source_url});
+  if(includeSupport){if(row.schema_version===2)payload.learningSupport=row.learning_support;}else payload.schemaVersion=1;
   return {status:'saved', submissionId:row.id, savedAt:row.saved_at, payload};
 }
 // 호출 전 기존 Worker에서 Origin·토큰·활성 회원을 확인한다. DB에도 동일 JWT를 전달해 RLS를 유지한다.
@@ -26,6 +28,7 @@ export async function handleRecords(req, {base, upstreamHeaders, user, fetchImpl
   if (parts[1] !== 'records') return null;
   const recordId = parts[2], sub = parts[3], requestId = parts[4];
   if (parts[0] !== 'submissions' || parts.length > 5 || (recordId && !contract.uuid.test(recordId)) || (sub && sub !== 'revisions') || (requestId && !contract.uuid.test(requestId))) return reply(400,{error:'invalid'});
+  const includeSupport=url.searchParams.get('support')==='1';
   const db = base + '/rest/v1/';
   async function rows(table, params) {
     const response = await fetchImpl(db + table + '?' + new URLSearchParams(params), {method:'GET',headers:upstreamHeaders,redirect:'manual'});
@@ -55,14 +58,14 @@ export async function handleRecords(req, {base, upstreamHeaders, user, fetchImpl
         await rows('pilot_revisions',{select:'id,owner_id,submission_id,request_id,main_idea,primary_text,support_text,relation_text,retell,saved_at',limit:'0'});
         return reply(200,{recordsApiVersion:1,ready:true});
       }
-      const result = await page('pilot_submissions','id,saved_at,article_title,source_url,pilot_revisions(id)',{'pilot_revisions.limit':'1'});
+      const result = await page('pilot_submissions','id,saved_at,article_title,source_url,pilot_revisions(id)'+(includeSupport?',learning_support':''),{'pilot_revisions.limit':'1'});
       if (!result) return reply(400,{error:'invalid'});
-      return reply(200,{items:result.items.map(r=>({submissionId:r.id,savedAt:r.saved_at,articleTitle:r.article_title||'',sourceUrl:r.source_url||'',hasRevisions:!!r.pilot_revisions?.length})),nextCursor:result.nextCursor});
+      return reply(200,{items:result.items.map(r=>({submissionId:r.id,savedAt:r.saved_at,articleTitle:r.article_title||'',sourceUrl:r.source_url||'',hasRevisions:!!r.pilot_revisions?.length,...(includeSupport?{learningSupport:r.learning_support??null}:{})})),nextCursor:result.nextCursor});
     }
     const saved = await parent(); if (!saved) return reply(404,{error:'not_found'});
     if (!sub) {
-      if (url.search) return reply(400,{error:'invalid'});
-      return reply(200, original(saved));
+      if (url.search && url.search!=='?support=1') return reply(400,{error:'invalid'});
+      return reply(200, original(saved,includeSupport));
     }
     if (!requestId) {
       const result = await page('pilot_revisions','*',{submission_id:'eq.'+recordId});

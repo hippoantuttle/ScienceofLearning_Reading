@@ -19,6 +19,10 @@
   <!-- @development-start -->
   <script src="submission-demo.js" defer></script>
   <!-- @development-end -->
+  <script src="sentence-source.js" defer></script>
+  <script src="reading-support-contract.js" defer></script>
+  <script src="learning-support.js" defer></script>
+  <script src="reading-support.js" defer></script>
   <script src="record-contract.js" defer></script>
   <script src="record-client.js" defer></script>
   <script src="submission-contract.js" defer></script>
@@ -31,6 +35,8 @@
   <script src="submission-config.local.js" defer></script>
   <!-- @development-end -->
   <script src="sidepanel.js" defer></script>
+  <script src="support-view.js" defer></script>
+  <script src="guided-panel.js" defer></script>
   <script src="submission-panel.js" defer></script>
   <script src="pilot-ai-panel.js" defer></script>
   <script src="feedback-panel.js" defer></script>
@@ -107,6 +113,14 @@
         <p id="article-ai-status" role="status" aria-live="polite"></p>
       </details>
       <div id="ai-result" class="result" hidden></div>
+      <div id="guided-mode-block" class="substep" hidden>
+        <label for="reading-mode">도움 방식</label>
+        <select id="reading-mode"><option value="independent">중급 · 직접 작성</option><option value="guided">초급 · 문장 후보로 구조화</option></select>
+        <div id="guided-consent" hidden>
+          <p class="ai-notice">요청하면 이 글의 본문이 외부 AI 서비스로 전송됩니다. 전송해도 되는 글에만 사용하세요. AI는 원문 문장 후보만 고르고, 구조와 중심 생각은 직접 작성합니다.</p>
+          <details><summary>전송할 본문 보기</summary><textarea id="guided-preview" rows="5" readonly aria-label="문장 후보 선정에 전송할 본문"></textarea></details>
+        </div>
+      </div>
       <div class="substep">
         <button id="start-reading" type="button" class="primary" aria-describedby="reading-start-status">읽기·구조화 시작</button>
         <p id="reading-start-status" role="status" aria-live="polite"></p>
@@ -165,7 +179,25 @@
       <div id="main-idea-block"><label id="main-idea-label" for="main-idea">중심 생각</label><textarea id="main-idea" rows="3" required aria-describedby="main-idea-error"></textarea><p id="main-idea-error" class="field-error"></p></div>
       <div id="structure-block">
       <label for="structure">구조도 유형 (직접 선택)</label><select id="structure"><option value="claim">주장–근거</option><option value="cause">원인–결과</option><option value="problem">문제–해결</option></select>
-      <div class="structure-map" role="group" aria-label="직접 작성하는 구조도">
+      <section id="guided-work" hidden aria-label="문장 후보로 직접 구조화">
+        <p id="guided-status" role="status" aria-live="polite"></p>
+        <button id="guided-retry" type="button" hidden>본문 보내고 후보 다시 요청 (오류 시 1회)</button>
+        <button id="guided-no-candidates" type="button">후보 없이 직접 구성</button>
+        <button id="guided-return" type="button" hidden>이전 구성 화면으로 돌아가기</button>
+        <p class="hint">먼저 문장을 양쪽 역할에 배치하고 연결하세요. 구조도를 확인하면 중심 생각과 다시 말하기 단계가 활성화됩니다. 기본 유형은 주장–근거이며 다른 유형으로 바꿀 수 있습니다.</p>
+        <button id="guided-manual" type="button">직접 작성으로 계속</button>
+        <div id="guided-graph-controls">
+          <h3>문장 후보</h3><ol id="guided-candidates"></ol>
+          <details id="guided-source-picker"><summary>원문에서 추가</summary><ol id="guided-source-list"></ol></details>
+          <h3>내가 배치한 문장</h3><ol id="guided-nodes"></ol>
+          <label for="guided-from">연결 시작</label><select id="guided-from"></select>
+          <label for="guided-to">연결 도착</label><select id="guided-to"></select>
+          <label for="guided-relation">관계</label><select id="guided-relation"></select>
+          <button id="guided-connect" type="button">선택한 문장 연결</button><ul id="guided-edges"></ul>
+        </div>
+        <button id="guided-to-main" type="button" class="primary">구조도 확인 · 중심 생각 작성</button>
+      </section>
+      <div id="manual-map" class="structure-map" role="group" aria-label="직접 작성하는 구조도">
         <div class="structure-node"><label id="primary-label" for="primary">핵심 정보 · 주장</label><textarea id="primary" rows="3" required aria-describedby="primary-error"></textarea><p id="primary-error" class="field-error"></p></div>
         <div class="structure-link" aria-hidden="true">↕</div>
         <div class="structure-node"><label id="support-label" for="support">보조 정보 · 근거</label><textarea id="support" rows="3" required aria-describedby="support-error"></textarea><p id="support-error" class="field-error"></p></div>
@@ -199,6 +231,7 @@
 
   <section id="review-view" aria-labelledby="step4" hidden>
     <h2 id="step4" tabindex="-1">정리·저장</h2>
+    <p id="summary-support-mode"></p><div id="summary-graph"></div>
     <dl><dt>중심 생각</dt><dd id="summary-main"></dd><dt>구조도 유형</dt><dd id="summary-type"></dd><dt>핵심 정보</dt><dd id="summary-primary"></dd><dt>보조 정보</dt><dd id="summary-support"></dd><dt>왜 이렇게 연결했나요? (선택)</dt><dd id="summary-relation"></dd><dt>다시 말하기(Retell)</dt><dd id="summary-retell"></dd></dl>
     <label for="reflection">감상 (선택)</label><textarea id="reflection"></textarea>
     <label for="new-words">새 어휘 (선택)</label><textarea id="new-words"></textarea>
@@ -213,7 +246,7 @@
         <label for="submission-source-url">출처 사이트 주소 (선택, 예: https://example.com)</label><input id="submission-source-url" type="url" autocomplete="off" aria-describedby="submission-article-note">
         <p id="submission-article-note" class="hint">제목은 탭 제목으로 미리 채웠습니다. 민감한 정보는 지우고, 주소에는 경로·검색어를 넣지 마세요.</p>
       </details>
-      <details class="disclosure"><summary>저장되는 항목</summary><p class="hint">중심 생각, 구조도, 다시 말하기, 선택 정리, 원문 재확인 여부가 저장됩니다. 글 본문은 저장하지 않습니다.</p></details>
+      <details class="disclosure"><summary>저장되는 항목</summary><p class="hint">중심 생각, 구조도, 다시 말하기, 선택 정리, 원문 재확인 여부가 저장됩니다. 구조도에 사용한 원문 문장은 답안과 함께 저장됩니다. 지원 모드와 AI 문장 후보를 본 이력도 저장됩니다.</p></details>
       <button id="submission-send" type="button" class="primary" aria-describedby="submission-status">동의하고 저장</button>
       <p id="submission-status" role="status" aria-live="polite"></p>
     </section>
@@ -240,6 +273,7 @@
       <p id="feedback-status" role="status" aria-live="polite"></p>
     </details>
     <div id="feedback-result" class="result" aria-live="polite"></div>
+    <div id="feedback-support-context"></div>
     <h3>직접 수정</h3><p class="hint">처음 저장본은 그대로 두고 수정본을 따로 저장합니다.</p>
     <label for="feedback-main">중심 생각</label><textarea id="feedback-main" rows="3"></textarea>
     <label for="feedback-primary">핵심 정보</label><textarea id="feedback-primary" rows="3"></textarea>

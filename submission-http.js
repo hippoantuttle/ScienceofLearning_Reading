@@ -15,8 +15,16 @@ const SubmissionHttp=(()=>{
    if(response.status===401){const renewed=await getToken({rejectedToken:token});if(renewed&&renewed!==token)response=await send(renewed);}
    return response;
   }
+  let includeSupport=false;
   return {async save(payload,key){
    if(typeof key!=='string'||!key.trim())throw new Error('요청 식별자 오류');
+   if(payload.schemaVersion===2||(typeof payload.relation==='string'&&!payload.relation.trim())){
+    const probe=new URL(url.href);probe.searchParams.set('capabilities','2');
+    const check=await authorized(probe.href,{method:'GET',headers:{},redirect:'error',cache:'no-store',credentials:'omit'});
+    const caps=check.ok?await check.json():null;
+    if(caps?.supportSchemaVersion!==1||caps.optionalRelation!==true)throw Error('현재 서버·DB에 새 구조도 저장 기능이 준비되지 않았습니다. 업데이트 후 같은 요청으로 재시도하세요.');
+   }
+   includeSupport=payload.schemaVersion===2;
    const response=await authorized(url.href,{method:'POST',headers:{'Content-Type':'application/json','Idempotency-Key':key},body:JSON.stringify(payload),redirect:'error',cache:'no-store',credentials:'omit'});
    if(!response.ok)throw responseError('저장 요청 실패',response.status);
    return response.json();
@@ -25,7 +33,7 @@ const SubmissionHttp=(()=>{
    if(response.status===403)return false;if(!response.ok)throw new Error('회원 확인에 실패했습니다.');const result=await response.json();return result?.active===true;
   },async read(key){
    if(typeof key!=='string'||!key.trim())throw new Error('요청 식별자 오류');
-   const target=new URL(url.href);target.searchParams.set('sessionId',key);
+   const target=new URL(url.href);target.searchParams.set('sessionId',key);if(includeSupport)target.searchParams.set('support','1');
    const response=await authorized(target.href,{method:'GET',headers:{},redirect:'error',cache:'no-store',credentials:'omit'});
    if(!response.ok)throw responseError('재조회 실패',response.status);return response.json();
   }};

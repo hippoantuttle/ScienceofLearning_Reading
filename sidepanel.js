@@ -118,7 +118,8 @@ async function gotoPdfUnit(next) {
 function worksheetSubmissionValues() {
   if (articleSession?.kind === 'pdf' && pdfWorksheet) return pdfWorksheet.serialize(pdfStructureValues());
   const v = id => document.getElementById(id).value;
-  return {structureType:v('structure'), mainIdea:v('main-idea'), primary:v('primary'), support:v('support'), relation:v('relation')};
+  const values={structureType:v('structure'), mainIdea:v('main-idea'), primary:v('primary'), support:v('support'), relation:v('relation')};
+  return typeof guidedSupportValues==='function'?guidedSupportValues(values):values;
 }
 document.getElementById('open-pdf-viewer')?.addEventListener('click', async () => {
   try {
@@ -189,6 +190,7 @@ async function connectCurrentTab({skipConfirm = false} = {}) {
   if (typeof resetRecordsPanel === 'function') resetRecordsPanel();
   const recordsSection=document.getElementById('records-section');if(recordsSection)recordsSection.hidden=true;
   const trainingContext=document.getElementById('training-context');if(trainingContext)trainingContext.hidden=false;
+  if(typeof resetGuided==='function')resetGuided();
   recommendationGate.reset();
   if (typeof resetPanelSubmission === 'function') resetPanelSubmission();
   if (typeof resetPilotAi === 'function') resetPilotAi();
@@ -262,6 +264,7 @@ async function connectCurrentTab({skipConfirm = false} = {}) {
     document.getElementById('mock-recommend').disabled = false;
     // @development-end
     if (typeof pilotAiEnable === 'function') pilotAiEnable();
+    if(typeof guidedPrepare==='function')guidedPrepare();
     showStatus('', false, document.getElementById('connect-status'));
     showStatus(viewer ? `PDF 단위 ${response.paragraphs.length}개를 연결했습니다. 준비되면 「읽기·구조화 시작」을 누르세요.` : '글을 연결했습니다. 준비되면 「읽기·구조화 시작」을 누르세요.');
   } catch (error) {
@@ -339,7 +342,8 @@ document.getElementById('start-reading').addEventListener('click', async () => {
     // @development-end
     document.getElementById('preparation').hidden = true;
     document.getElementById('reading').hidden = false;
-    document.getElementById('main-idea').focus();
+    if(typeof guidedStarted==='function')guidedStarted();
+    if(typeof guidedSession!=='undefined'&&guidedSession?.mode==='guided')document.getElementById('structure').focus();else document.getElementById('main-idea').focus();
     showStatus('읽기·구조화 중입니다. 직접 작성한 뒤 다시 말하기로 이동하세요.');
     const status=document.getElementById('reading-start-status');if(status)status.textContent='';
   } catch (error) { showStatus(error.message || '연결한 글을 다시 확인하세요.', true, document.getElementById('reading-start-status')); }
@@ -391,17 +395,19 @@ async function enterRetell(event) {
       document.getElementById(ids[key]).setAttribute?.('aria-invalid','true');
       const error=document.getElementById(ids[key]+'-error');if(error)error.textContent=messages[key];
     }
-    showStatus('중심 생각, 핵심 정보·보조 정보와 관계 설명을 모두 작성하세요.',true,document.getElementById('form-error'));
+    showStatus('중심 생각과 구조도의 필수 정보를 작성하세요. 추가 연결 설명은 선택입니다.',true,document.getElementById('form-error'));
     document.getElementById(ids[validation.missing[0]]).focus();return;
   }
   operationBusy = true;
   try {
     await validateBoundTab();
+    if(typeof guidedBeforeRetell==='function')guidedBeforeRetell();
     blindPort = articlePort(articleSession);
     const connectedPort = blindPort;
     connectedPort.onDisconnect.addListener(() => {
       if (blindPort !== connectedPort) return;
       blindPort = null;
+      if(typeof guidedRevisit==='function')guidedRevisit();
       document.getElementById('retell-view').hidden = true;
       document.getElementById('reading').hidden = false;
       showStatus('글 연결이 끊어졌습니다. 원문을 확인하고 다시 연결하세요.',true,document.getElementById('form-error'));
@@ -414,7 +420,7 @@ async function enterRetell(event) {
     document.getElementById('revisit-note').textContent = rechecked ? '이전에 원문을 다시 확인했습니다.' : '';
     document.getElementById('retell-input').focus();
     showStatus('원문을 가렸습니다. 기억나는 내용을 자신의 말로 작성하세요.');
-  } catch (error) { const restored=await restoreBlind(document.getElementById('form-error')); if(restored)showStatus(error.message || '원문 가림을 확인하지 못했습니다.',true,document.getElementById('form-error')); }
+  } catch (error) { if(typeof guidedRevisit==='function')guidedRevisit();const restored=await restoreBlind(document.getElementById('form-error')); if(restored)showStatus(error.message || '원문 가림을 확인하지 못했습니다.',true,document.getElementById('form-error')); }
   finally { operationBusy = false; }
 }
 // Prevent the submit button's default event from starting a second transition.
@@ -422,6 +428,7 @@ document.getElementById('to-retell').addEventListener('click',enterRetell);
 document.getElementById('back-to-reading').addEventListener('click',async () => {
   if(operationBusy)return;operationBusy=true;
   try{if (!await restoreBlind()) return;}finally{operationBusy=false;}
+  if(typeof guidedRevisit==='function')guidedRevisit();
   rechecked = true; document.getElementById('retell-view').hidden = true; document.getElementById('reading').hidden = false;
   document.getElementById('main-idea').focus();
   showStatus('원문을 다시 확인했습니다. 이후 다시 말하기는 재확인 수행으로 기록됩니다.');
@@ -439,6 +446,7 @@ document.getElementById('to-review').addEventListener('click',async () => {
     try { const packed = worksheetSubmissionValues(); values = {main:packed.mainIdea, primary:packed.primary, support:packed.support, relation:packed.relation}; typeText = '문서 전체 · ' + typeText; }
     catch (error) { showStatus(error.message, true, retellError); return; }
   }
+  if(typeof appendSupportView==='function'){try{const packed=worksheetSubmissionValues();const view=document.getElementById('summary-graph');if(view){view.textContent='';appendSupportView(view,packed.learningSupport);}}catch(error){showStatus(error.message,true,retellError);return;}}
   for (const [id,value] of Object.entries({'summary-main':values.main,'summary-primary':values.primary,'summary-support':values.support,'summary-relation':values.relation.trim() ? values.relation : '작성하지 않음 (선택)','summary-retell':retell,'summary-type':typeText})) document.getElementById(id).textContent = value;
   document.getElementById('retell-view').hidden = true; document.getElementById('review-view').hidden = false; document.getElementById('step4')?.focus();
   showStatus('원문을 다시 표시했습니다. 답안을 확인하고 저장하세요.');
@@ -446,6 +454,7 @@ document.getElementById('to-review').addEventListener('click',async () => {
 document.getElementById('end-training').addEventListener('click',async () => {
   if(operationBusy || !confirm('훈련을 종료하고 미저장 내용을 삭제할까요?'))return;operationBusy=true;
   try{if (!await restoreBlind()) return;}finally{operationBusy=false;}
+  if(typeof resetGuided==='function')resetGuided();
   articleSession=null;rechecked=false;recommendationGate.reset();resetPdfMode();
   if(typeof resetPanelSubmission==='function')resetPanelSubmission();
   if(typeof resetPilotAi==='function')resetPilotAi();
@@ -466,6 +475,7 @@ async function interruptRetell(message) {
   operationBusy=true;
   try {
     if(!await restoreBlind())return;
+    if(typeof guidedRevisit==='function')guidedRevisit();
     document.getElementById('retell-view').hidden=true;document.getElementById('reading').hidden=false;rechecked=true;
     showStatus(message,true,document.getElementById('form-error'));document.getElementById('main-idea').focus();
   } finally {operationBusy=false;}

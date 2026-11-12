@@ -3,7 +3,7 @@
 const fs=require('node:fs'),path=require('node:path'),crypto=require('node:crypto');
 const {validateConfig,extensionId}=require('./build-extension.cjs');
 const ROOT=path.resolve(__dirname,'..');
-const SOURCES=['server/ai/pilot-worker.mjs','server/ai/worker.mjs','server/ai/feedback.mjs','server/ai/prompts/pre-reading-v2.mjs','server/pilot-access.mjs'];
+const SOURCES=['sentence-source.js','reading-support-contract.js','learning-support.js','server/ai/reading-candidates.mjs','server/ai/prompts/reading-candidates-v1.mjs','server/ai/pilot-worker.mjs','server/ai/worker.mjs','server/ai/feedback.mjs','server/ai/prompts/pre-reading-v2.mjs','server/pilot-access.mjs'];
 const AI='https://reading-ai-pilot.patrick020308.workers.dev/recommend';
 const REQUIRED_SECRETS=['DEEPSEEK_API_KEY','SUPABASE_PUBLISHABLE_KEY','PILOT_SELFTEST_USER_ID'];
 const sha=data=>crypto.createHash('sha256').update(data).digest('hex');
@@ -19,15 +19,15 @@ function candidates(config,{expiresAt,unlimited=false,now=Date.now(),root=ROOT}=
   const id=extensionId(manifest.key);
   const base={name:'reading-ai-pilot',main:'server/ai/pilot-worker.mjs',compatibility_date:'2026-01-01',workers_dev:true,
     vars:{SUPABASE_URL:settings.authUrl,ALLOWED_ORIGIN:'chrome-extension://'+id,
-      PILOT_AI_ENABLED:'false',PILOT_ARTICLE_ENABLED:'false',PILOT_FEEDBACK_ENABLED:'false',
+      PILOT_AI_ENABLED:'false',PILOT_ARTICLE_ENABLED:'false',PILOT_GUIDED_CANDIDATES_ENABLED:'false',PILOT_FEEDBACK_ENABLED:'false',
       PILOT_SELFTEST_ONLY:'true',PILOT_SELFTEST_EXPIRES_AT:expiresAt,
       PILOT_USER_DAILY_LIMIT:limit,PILOT_GLOBAL_DAILY_LIMIT:limit},
     durable_objects:{bindings:[{name:'PILOT_BUDGET',class_name:'PilotBudget'}]},
     migrations:[{tag:'v1',new_sqlite_classes:['PilotBudget']}]};
   const active=structuredClone(base);
   for(const key of ['PILOT_AI_ENABLED','PILOT_ARTICLE_ENABLED','PILOT_FEEDBACK_ENABLED'])active.vars[key]='true';
-  return {disabled:base,active,extensionDisabled:{...settings,articleTestEnabled:false,feedbackTestEnabled:false},
-    extensionActive:{...settings,articleTestEnabled:true,feedbackTestEnabled:true},extensionId:id,limit};
+  return {disabled:base,active,extensionDisabled:{...settings,guidedReadingEnabled:false,articleTestEnabled:false,feedbackTestEnabled:false},
+    extensionActive:{...settings,guidedReadingEnabled:false,articleTestEnabled:true,feedbackTestEnabled:true},extensionId:id,limit};
 }
 
 function secretReadiness(names){

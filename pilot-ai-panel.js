@@ -60,6 +60,7 @@ pilotAiEl('article-ai-recommend').addEventListener('click', async () => {
   const status = pilotAiEl('article-ai-status');
   if (button.disabled) return;
   try {
+    if(document.getElementById('reading-mode')?.value==='guided')throw Error('실제 글 추천을 사용할 수 없습니다.');
     if (!SubmissionConfig.articleTestEnabled || !articleSession || articleSession.fallback || articleSession.kind === 'pdf') throw new Error('실제 글 추천을 사용할 수 없습니다.');
     const session = articleSession;
     const article = session.text;
@@ -73,7 +74,7 @@ pilotAiEl('article-ai-recommend').addEventListener('click', async () => {
     status.textContent = 'AI 추천을 요청하고 있습니다. 최대 1분쯤 걸릴 수 있습니다.';
     globalThis.PanelUI?.tone(status,'warning');
     const data = await recommendationGate.request(() => AIContract.requestPilot(token, SubmissionConfig.aiEndpoint, {article}));
-    if (!data || authFlow.getToken() !== token) return;
+    if (!data || authFlow.getToken() !== token || (typeof guidedSession!=='undefined'&&guidedSession?.mode==='guided') || document.getElementById('reading-mode')?.value==='guided') return;
     const result = pilotAiEl('ai-result');
     result.textContent = `실제 글 기반 추천\n${data.terms.map(item => `${item.term}: ${item.definition}`).join('\n')}\n${data.background.join('\n')}\n구조도 유형: ${PILOT_AI_TYPE_LABEL[data.structureType]} (참고용, 직접 선택)`;
     result.hidden = false;
@@ -100,7 +101,7 @@ pilotAiEl('ai-recommend').addEventListener('click', async () => {
     status.textContent = 'AI 추천을 요청하고 있습니다.';
     globalThis.PanelUI?.tone(status,'warning');
     const data = await recommendationGate.request(() => AIContract.requestPilot(token, SubmissionConfig.aiEndpoint));
-    if (!data || authFlow.getToken() !== token) return; // 읽기 시작·로그아웃·새 시도로 폐기된 응답
+    if (!data || authFlow.getToken() !== token || (typeof guidedSession!=='undefined'&&guidedSession?.mode==='guided') || document.getElementById('reading-mode')?.value==='guided') return; // 읽기 시작·로그아웃·새 시도로 폐기된 응답
     const result = pilotAiEl('ai-result');
     result.textContent = `AI 추천 시험 결과 (읽은 글과 무관한 가상 예문 기반)\n${data.terms.map(item => `${item.term}: ${item.definition}`).join('\n')}\n${data.background.join('\n')}\n구조도 유형: ${PILOT_AI_TYPE_LABEL[data.structureType]} (참고용, 직접 선택)`;
     result.hidden = false;

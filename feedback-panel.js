@@ -3,6 +3,7 @@ const feedbackFields = [['mainIdea','feedback-main','중심 생각'],['primary',
 let feedbackState=null, feedbackGeneration=0;
 const feedbackEl=id=>document.getElementById(id);
 function resetFeedbackPanel(){
+  const supportView=feedbackEl('feedback-support-context');if(supportView)supportView.textContent='';
   feedbackGeneration++; feedbackState=null;
   feedbackEl('feedback-section').hidden=true; feedbackEl('feedback-article').value=''; feedbackSetCard(false);
   feedbackEl('feedback-request').disabled=true; feedbackEl('feedback-result').textContent=''; feedbackEl('feedback-status').textContent=''; feedbackEl('feedback-comparison').textContent='';
@@ -12,6 +13,7 @@ function resetFeedbackPanel(){
 function feedbackSetCard(visible){const card=feedbackEl('feedback-ai-card');if(!card)return;card.hidden=!visible;if(!visible)card.open=false;}
 function feedbackSubmissionReady(snapshot, flow, receipt){
   if(!snapshot || !articleSession) return;
+  const supportView=feedbackEl('feedback-support-context');if(supportView){supportView.textContent='';if(typeof appendSupportView==='function')appendSupportView(supportView,snapshot.learningSupport);}
   feedbackGeneration++; feedbackState={snapshot,flow,article:articleSession.text,session:articleSession,savedAnswers:RecordAnswers(snapshot)};
   if(receipt?.submissionId && typeof RecordClient!=='undefined')feedbackState.saver=RecordClient.createSaver({io:RecordClient.create({endpoint:SubmissionConfig.endpoint,getToken:options=>typeof panelFreshToken==='function'?panelFreshToken(flow,options):flow.getToken()}),recordId:receipt.submissionId,newId:()=>crypto.randomUUID()});
   feedbackEl('revision-save').disabled=!feedbackState.saver;
@@ -86,7 +88,7 @@ feedbackEl('feedback-request').addEventListener('click',async()=>{
     if(generation!==feedbackGeneration||articleSession!==state.session)return;
     const url=new URL(SubmissionConfig.aiEndpoint);
     if((url.protocol!=='https:' && !(url.protocol==='http:'&&['127.0.0.1','localhost','[::1]'].includes(url.hostname)))||url.username||url.password||url.search||url.hash||url.pathname!=='/recommend')throw new Error('AI 서버 주소가 올바르지 않습니다.');
-    url.pathname='/feedback'; const body=JSON.stringify({article:state.article,sessionId:state.snapshot.sessionId});
+    url.pathname='/feedback'; const body=JSON.stringify({article:state.article,sessionId:state.snapshot.sessionId,...(state.snapshot.schemaVersion===2?{supportSchemaVersion:1}:{})});
     if(state.article.length>12000 || new TextEncoder().encode(body).length>50000)throw new Error('글이 너무 깁니다.');
     button.disabled=true; status.textContent='피드백을 요청하고 있습니다. 최대 1분쯤 걸릴 수 있습니다.';
     globalThis.PanelUI?.tone(status,'warning');

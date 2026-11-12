@@ -39,3 +39,12 @@ test('선택 설명 미작성도 동일한 Retell 루브릭·응답 형식으로
   assert.match(sent.messages[0].content,/이해 부족·누락·감점 근거로 삼거나 설명 작성을 의무적으로 요구하지 마세요/);
   assert.deepEqual(Object.keys(out).sort(),['criteria','improvements','missingIdea','overall','strengths']);
 });
+
+test('지원받은 Retell의 모델 입력에는 최소 지원 맥락만 추가하고 그래프·ID·미사용 후보는 제외한다',async()=>{
+ let sent;const fake=async(_url,init)=>{sent=JSON.parse(init.body);return Response.json({choices:[{finish_reason:'stop',message:{content:JSON.stringify(base)}}]});};
+ await callFeedback('synthetic',fake,'합성 원문',{structure_type:'claim',main_idea:'합성',primary_text:'합성 발췌',support_text:'합성 발췌',relation_text:'',retell:summary,learning_support:{mode:'guided',candidateExposure:true,graph:{nodes:[{id:'n1',sentenceId:'s0001',source:'ai_candidate',text:'합성 발췌'}],edges:[]},candidateIds:['s0001','s0002']}});
+ const reference=JSON.parse(sent.messages[1].content).reference;
+ assert.deepEqual(reference.learningSupport,{mode:'guided',candidateExposure:true,sources:['ai_candidate']});
+ assert.doesNotMatch(sent.messages[1].content,/candidateIds|sentenceId|n1|s0001|edges/);
+ assert.match(sent.messages[0].content,/발췌는 학습자가 창작한 문장으로 칭찬하거나 감점하지 마세요/);
+});

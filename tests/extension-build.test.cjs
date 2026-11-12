@@ -62,17 +62,25 @@ test('검토 전용 산출물은 네트워크 권한과 연결을 차단하며 �
 
 function panelFixture(files, fetchImpl, storageData = {}) {
   const html = files['sidepanel.html'].toString(), elements = {};
+  function element(tag='div'){
+    return {tag,value:'',hidden:false,disabled:false,checked:false,children:[],attrs:{},handlers:{},classList:{toggle(){}},_text:'',
+      get textContent(){return this._text+this.children.map(c=>c.textContent).join('');},set textContent(v){this._text=String(v);this.children=[];},
+      setAttribute(k,v){this.attrs[k]=v;},removeAttribute(k){delete this.attrs[k];},
+      addEventListener(k,v){const old=this.handlers[k];this.handlers[k]=old?async(...args)=>{await old(...args);return v(...args);}:v;},focus(){},reset(){},
+      append(...items){for(const x of items){x.parent=this;this.children.push(x);}},prepend(x){x.parent=this;this.children.unshift(x);},
+      insertBefore(x,before){x.parent=this;this.children=this.children.filter(c=>c!==x);const at=this.children.indexOf(before);this.children.splice(at<0?this.children.length:at,0,x);},
+      remove(){if(this.parent)this.parent.children=this.parent.children.filter(c=>c!==this);},querySelector(selector){return selector==='option[value=""]'?this.children.find(c=>c.value==='')||null:null;},
+      selectedOptions:[{textContent:'주장–근거'}]};
+  }
   for (const tag of html.matchAll(/<[^>]+\bid="([^"]+)"[^>]*>/g)) {
-    const id = tag[1];
-    elements[id] = {value:id === 'structure' ? 'claim' : '', hidden:/\shidden\b/.test(tag[0]), disabled:/\sdisabled\b/.test(tag[0]), checked:false, textContent:'', attrs:{}, handlers:{}, selectedOptions:[{textContent:'주장–근거'}], classList:{toggle(){}},
-      setAttribute(k,v){this.attrs[k]=v;}, removeAttribute(k){delete this.attrs[k];}, addEventListener(k,v){this.handlers[k]=v;}, focus(){}, reset(){}, append(){}};
+    const id=tag[1];elements[id]=Object.assign(element(),{value:id==='structure'?'claim':id==='reading-mode'?'independent':'',hidden:/\shidden\b/.test(tag[0]),disabled:/\sdisabled\b/.test(tag[0])});
   }
   const tab = {id:1, windowId:2, url:'https://article.example.org/synthetic', title:'합성 제목'}, events = {}, calls = {blur:0, restore:0, network:0};
   const chrome = {windows:{getCurrent:async()=>({id:2})}, scripting:{executeScript:async()=>{}}, tabs:{
     query:async()=>[tab], get:async()=>tab,
     onActivated:{addListener(fn){events.activate=fn;}}, onUpdated:{addListener(fn){events.update=fn;}},
     connect:()=>({onDisconnect:{addListener(){}}, disconnect(){}}),
-    sendMessage:async(_id, message)=>{if(message.action==='EXTRACT_ARTICLE')return {status:'success', text:'직접 작성한 가상 글입니다.', wordCount:4, charCount:15, token:'synthetic'};
+    sendMessage:async(_id, message)=>{if(message.action==='EXTRACT_ARTICLE')return {status:'success', text:storageData.__articleText||'직접 작성한 가상 글입니다.', wordCount:4, charCount:15, token:'synthetic'};
       if(message.enabled)calls.blur++;else calls.restore++;return {status:'success', enabled:!!message.enabled};}
   }};
   const extensionId='jenapgoakhnmlmjcdnkfakkkgjobbfbb', workerListeners=[], panelListeners=[];
@@ -85,12 +93,86 @@ function panelFixture(files, fetchImpl, storageData = {}) {
   const worker=vm.createContext({chrome:workerChrome,URL,URLSearchParams,TextEncoder,AbortController,setTimeout,clearTimeout,crypto:globalThis.crypto,atob,btoa,console:{info(){},error(){}},fetch:fetchImpl});
   worker.importScripts=(...names)=>{for(const name of names)vm.runInContext(files[name].toString(),worker,{filename:name});};
   vm.runInContext(files['background.js'].toString(),worker,{filename:'background.js'});
-  const context = vm.createContext({document:{getElementById:id=>elements[id] || null, querySelectorAll:()=>[]}, chrome, URL, URLSearchParams, TextEncoder, AbortController, setTimeout, clearTimeout,
+  const context = vm.createContext({document:{getElementById:id=>elements[id] || null, createElement:element,querySelectorAll:()=>[]}, chrome, URL, URLSearchParams, TextEncoder, TextDecoder, AbortController, setTimeout, clearTimeout,
     crypto:globalThis.crypto, structuredClone, atob, btoa,
     confirm:()=>true, MutationObserver:class {observe(){}}, fetch:async(...args)=>{calls.network++;if(fetchImpl)return fetchImpl(...args);throw Error('NETWORK_BLOCKED');}});
   for (const match of html.matchAll(/<script src="([^"]+)"/g)) vm.runInContext(files[match[1]].toString(), context, {filename:match[1]});
   return {elements, context, events, tab, calls, storageData};
 }
+
+async function waitFor(check){for(let n=0;n<200;n++){if(check())return;await new Promise(r=>setTimeout(r,5));}assert.fail('합성 패널 상태 전환 대기 초과');}
+const guidedArticle='합성 도서관은 주말에도 문을 연다. 주민들이 주말 운영을 요청했다. 자원봉사자가 운영을 돕는다.';
+test('초급 설치본: 명시 요청→빈 역할/연결→직접 배치/연결→중심 생각→Retell→v2 저장/재조회',async()=>{
+ const {createHandler}=await import('../server/submissions/worker.mjs');
+ const {createPilotWorker}=await import('../server/ai/pilot-worker.mjs');
+ const origin='chrome-extension://jenapgoakhnmlmjcdnkfakkkgjobbfbb',owner='aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+ const env={ALLOWED_ORIGIN:origin,SUPABASE_URL:config.authUrl,SUPABASE_PUBLISHABLE_KEY:config.publicKey,DEEPSEEK_API_KEY:'synthetic',PILOT_AI_ENABLED:'true',PILOT_GUIDED_CANDIDATES_ENABLED:'true',PILOT_USER_DAILY_LIMIT:'unlimited',PILOT_GLOBAL_DAILY_LIMIT:'unlimited'};
+ let row=null,models=0;
+ const upstream=async(url,init)=>{
+  if(url.endsWith('/auth/v1/user'))return Response.json({id:owner});
+  if(url.endsWith('/rpc/is_active_pilot_member'))return Response.json(true);
+  if(url.endsWith('/rpc/reading_support_capabilities'))return Response.json({supportSchemaVersion:1,optionalRelation:true});
+  if(init.method==='POST'){row={...JSON.parse(init.body),id:'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',saved_at:'2026-11-12T00:00:00Z'};return new Response(null,{status:201});}
+  return Response.json(row?[row]:[]);
+ };
+ const submissions=createHandler(upstream),ai=createPilotWorker({fetchImpl:upstream,providerFetch:async()=>{models++;return Response.json({choices:[{finish_reason:'stop',message:{content:JSON.stringify({candidateIds:['s0001','s0002','s0003']})}}]});}});
+ const fetchImpl=async(url,init)=>{
+  const u=new URL(url);if(u.origin===config.authUrl){if(u.pathname==='/auth/v1/token')return Response.json({access_token:'synthetic'});return Response.json(true);}
+  const req=new Request(url,{...init,headers:{...init.headers,...(init.method==='POST'?{origin}:{})}});
+  return u.origin===new URL(config.aiEndpoint).origin?ai.fetch(req,env):submissions(req,env);
+ };
+ const files=assemble({config:{...config,guidedReadingEnabled:true}}).files;
+ const t=panelFixture(files,fetchImpl,{__articleText:guidedArticle}),e=t.elements;
+ e['ai-email'].value='synthetic@example.invalid';e['ai-password'].value='synthetic';await e['account-form'].handlers.submit({preventDefault(){}});
+ await e.analyze.handlers.click();e['reading-mode'].value='guided';await e['reading-mode'].handlers.change();assert.equal(models,0);
+ await e['start-reading'].handlers.click();await waitFor(()=>vm.runInContext('guidedSession.gate.state().candidateExposure',t.context));
+ assert.equal(models,1);assert.equal(e.structure.value,'claim');assert.equal(e['main-idea-block'].hidden,false);assert.equal(e['main-idea'].disabled,true);assert.equal(e['to-retell'].hidden,false);assert.equal(e['to-retell'].disabled,true);
+ assert.equal(vm.runInContext('guidedSession.editor.read().nodes.length',t.context),0);
+ e.structure.value='claim';await e.structure.handlers.change();
+ for(let n=0;n<2;n++)await e['guided-candidates'].children[n].children[1].handlers.click();
+ for(const [index,role]of [[0,'primary'],[1,'support']]){const select=e['guided-nodes'].children[index].children[1];select.value=role;await select.handlers.change();}
+ await e['guided-to-main'].handlers.click();assert.equal(e['main-idea'].disabled,true,'미연결은 진행 차단');
+ e['guided-from'].value='n2';e['guided-to'].value='n1';e['guided-relation'].value='supports';await e['guided-connect'].handlers.click();
+ await e['guided-to-main'].handlers.click();assert.equal(e['main-idea-block'].hidden,false);assert.equal(e['main-idea'].disabled,false);assert.equal(e['to-retell'].disabled,false);
+ e['main-idea'].value='주민의 필요를 반영해 도서관 운영을 넓혔다.';e.relation.value='';
+ await e['to-retell'].handlers.click();assert.equal(e.reading.hidden,true);assert.equal(e['retell-view'].hidden,false);
+ assert.equal(vm.runInContext('guidedSession.gate.visibleCandidates().length',t.context),0);
+ e['retell-input'].value='합성 마을의 주민 요청에 따라 도서관은 주말에 운영한다.';await e['to-review'].handlers.click();
+ assert.equal(e['review-view'].hidden,false);assert.match(e['summary-graph'].textContent,/AI 문장 후보를 본 수행/);
+ await e['submission-send'].handlers.click();assert.match(e['submission-status'].textContent,/저장했습니다/);
+ assert.equal(row.schema_version,2);assert.equal(row.learning_support.candidateExposure,true);assert.equal(row.learning_support.graph.nodes.length,2);assert.equal(row.relation_text,'');
+ assert.equal(row.learning_support.graph.nodes.some(n=>n.sentenceId==='s0003'),false,'미사용 후보 텍스트 저장 없음');
+ assert.equal(vm.runInContext('panelFlow().verifiedSnapshot().learningSupport.graph.edges.length',t.context),1);
+ assert.equal(models,1,'제출/재조회/모드 선택의 자동 AI 호출 없음');
+ await e['back-to-reading'].handlers.click();
+ const before=vm.runInContext('JSON.stringify(guidedSession.editor.read())',t.context);
+ for(const action of ['guided-no-candidates','guided-manual']){
+  await e[action].handlers.click();assert.equal(e['guided-return'].hidden,false);
+  if(action==='guided-no-candidates'){assert.equal(e['guided-source-picker'].open,true);assert.equal(e['guided-source-list'].children.length,3);}
+  if(action==='guided-manual'){e.structure.value='cause';await e.structure.handlers.change();e.primary.value='임시 수동 작성';}
+  await e['guided-return'].handlers.click();assert.equal(e.structure.value,'claim');
+  assert.equal(vm.runInContext('JSON.stringify(guidedSession.editor.read())',t.context),before);
+  assert.equal(e['guided-candidates'].children.length,3);assert.equal(vm.runInContext('guidedSession.gate.state().candidateExposure',t.context),true);
+ }
+ assert.equal(models,1,'복귀는 기존 후보만 복원하고 새 AI 요청을 하지 않는다');
+});
+
+test('초급 설치본: 늦은 후보 결과·로그아웃 결과 차단, 직접 작성 뒤에도 노출 이력 유지',async()=>{
+ const Source=require('../sentence-source.js');let finish;
+ const fetchImpl=async(url,init)=>{if(url.includes('/auth/v1/token'))return Response.json({access_token:'synthetic'});if(url.includes('/rpc/'))return Response.json(true);if(url.endsWith('/reading-candidates'))return new Promise(r=>finish=async()=>r(Response.json({kind:'reading-candidates',schemaVersion:1,requestId:JSON.parse(init.body).requestId,documentHash:await Source.hash(guidedArticle),segmentationVersion:'sentence-v1',promptVersion:'reading-candidates-v1',modelId:'synthetic',candidateIds:['s0001','s0002','s0003']})));throw Error('unexpected');};
+ for(const action of ['structuring','logout','manual','manual-after-exposure']){
+  finish=null;const t=panelFixture(assemble({config:{...config,guidedReadingEnabled:true}}).files,fetchImpl,{__articleText:guidedArticle}),e=t.elements;
+  e['ai-email'].value='synthetic@example.invalid';e['ai-password'].value='synthetic';await e['account-form'].handlers.submit({preventDefault(){}});
+  await e.analyze.handlers.click();e['reading-mode'].value='guided';await e['reading-mode'].handlers.change();await e['start-reading'].handlers.click();await waitFor(()=>!!finish);
+  if(action==='manual-after-exposure'){await finish();await waitFor(()=>vm.runInContext('guidedSession.gate.state().candidateExposure',t.context));}
+  if(action==='structuring'){e.structure.value='claim';await e.structure.handlers.change();}
+  else if(action==='logout')await e['account-logout'].handlers.click();
+  else await e['guided-manual'].handlers.click();
+  await finish();await new Promise(r=>setTimeout(r,15));
+  assert.equal(e['guided-candidates'].children.length,0);assert.equal(vm.runInContext('guidedSession.gate.state().candidateExposure',t.context),action==='manual-after-exposure');
+  if(action==='manual-after-exposure'){e.structure.value='claim';await e.structure.handlers.change();e.primary.value='직접 작성한 합성 주장';e.support.value='직접 작성한 합성 근거';await e['guided-to-main'].handlers.click();const data=vm.runInContext('worksheetSubmissionValues().learningSupport',t.context);assert.equal(data.activity,'manual');assert.equal(data.candidateExposure,true);assert.equal(data.graph,null);}
+ }
+});
 
 test('실제 패키지 스크립트는 개발 DOM 없이 읽기·Retell·복원·종료를 실행한다', async () => {
   const t = panelFixture(assemble({reviewOnly:true}).files), e=t.elements;
@@ -438,4 +520,11 @@ test('Google 설치본의 저장은 401 뒤 같은 내용으로 한 번 갱신 �
   assert.equal(attempts[0].body,attempts[1].body);assert.equal(attempts[0].headers['Idempotency-Key'],attempts[1].headers['Idempotency-Key']);
   assert.match(e['submission-status'].textContent,/저장했습니다/);
   await e['feedback-request'].handlers.click();assert.equal(aiCalls,1);assert.match(e['feedback-result'].textContent,/직접 관계/);
+});
+
+test('초급 UI 검토본은 기본 비활성 제품 스위치와 분리되고 네트워크 권한이 없다',()=>{
+ const normal=assemble({config}).files;assert.doesNotMatch(normal['submission-config.js'].toString(),/"guidedReadingEnabled":true/);
+ const review=assemble({reviewOnly:true,guidedReview:true});assert.deepEqual(review.manifest.host_permissions,[]);assert.match(review.files['submission-config.js'].toString(),/"guidedReadingEnabled":true/);
+ assert.match(review.manifest.content_security_policy.extension_pages,/connect-src 'self';/);
+ assert.throws(()=>assemble({config,guidedReview:true}));assert.throws(()=>validateConfig({...config,guidedReadingEnabled:'true'}));
 });

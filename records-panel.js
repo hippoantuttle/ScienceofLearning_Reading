@@ -8,7 +8,7 @@ function resetRecordsPanel(){
   recordsEl('records-versions').textContent=''; recordsEl('records-detail').hidden=true;
   recordsEl('records-more').hidden=true; recordsEl('records-revisions-more').hidden=true;
 }
-function recordsIo(){const flow=panelFlow();return RecordClient.create({endpoint:SubmissionConfig.endpoint,getToken:options=>typeof panelFreshToken==='function'?panelFreshToken(flow,options):flow.getToken()});}
+function recordsIo(){const flow=panelFlow();return RecordClient.create({endpoint:SubmissionConfig.endpoint,includeSupport:SubmissionConfig.guidedReadingEnabled===true,getToken:options=>typeof panelFreshToken==='function'?panelFreshToken(flow,options):flow.getToken()});}
 function recordsError(error){
   if(error.status===401 || error.status===403){resetRecordsPanel();if(error.status===401&&typeof panelExpireAccount==='function')panelExpireAccount();}
   recordsEl('records-status').textContent=error.message||'기록 조회에 실패했습니다. 다시 시도하세요.';
@@ -30,6 +30,7 @@ async function recordsLoad(append=false){
     for(const item of result.items){
       const li=document.createElement('li'),button=recordsText('button',(item.articleTitle||'글 정보 없음')+' · '+recordsDate(item.savedAt)+(item.hasRevisions?' · 수정본 있음':' · 최초본만'));
       button.type='button';button.addEventListener('click',()=>recordsSelect(item.submissionId));li.append(button);
+      if(typeof LearningSupport!=='undefined')li.append(recordsText('p',LearningSupport.label(item.learningSupport)));
       if(item.sourceUrl)li.append(recordsText('p',item.sourceUrl));recordsEl('records-list').append(li);
     }
     recordsCursor=result.nextCursor;more.hidden=!recordsCursor;
@@ -44,6 +45,7 @@ function recordsCompare(){
   const original=recordSelection.payload;
   section.append(recordsText('h3',original.articleTitle||'글 정보 없음'));
   if(original.sourceUrl)section.append(recordsText('p',original.sourceUrl));
+  if(typeof appendSupportView==='function')appendSupportView(section,original.learningSupport);
   section.append(recordsText('p','최초 저장: '+recordsDate(recordSelection.savedAt)));
   if(selected)section.append(recordsText('p','선택 수정본 저장: '+recordsDate(selected.savedAt)));
   const dl=document.createElement('dl');
@@ -86,6 +88,7 @@ recordsEl('records-open').addEventListener('click',async()=>{
     operationBusy=true;
     try{if(articleSession && !await restoreBlind())return;}finally{operationBusy=false;}
   }
+  if(typeof resetGuided==='function')resetGuided();
   recommendationGate.reset();
   if(typeof resetPilotAi==='function')resetPilotAi();
   if(typeof localPreviewReset==='function')localPreviewReset();

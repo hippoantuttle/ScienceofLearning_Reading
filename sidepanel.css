@@ -129,3 +129,7 @@ details.dev-only summary { cursor: pointer; color: var(--muted); font-weight: 60
 .ai-card > summary { cursor: pointer; font-weight: 600; }
 .ai-notice { font-size: .9rem; margin: var(--space-2) 0; padding: var(--space-2); border-radius: var(--radius); background: var(--surface); }
 .stepper li[hidden] { display: none; }
+
+#guided-work li { padding: var(--space-2); margin-block: var(--space-2); border: 1px solid var(--border); border-radius: var(--radius); }
+#guided-work li p { white-space: pre-wrap; overflow-wrap: anywhere; }
+#guided-work button { margin: .25rem; }

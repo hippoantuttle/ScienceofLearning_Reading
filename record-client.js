@@ -2,8 +2,8 @@
 const RecordClient = (() => {
   const contract = typeof module !== 'undefined' ? require('./record-contract.js') : RecordContract;
   const messages = {400: '기록 서버가 요청 형식을 거절했습니다. 입력을 바꾸기 전에 서버 버전과 요청 형식을 확인해야 합니다.', 401: '로그인이 만료되었습니다. 상단에서 같은 계정으로 다시 로그인하세요.', 403: '활성 회원의 본인 기록만 이용할 수 있습니다.', 404: '기록이 없거나 삭제되어 조회할 수 없습니다.', 409: '같은 요청 식별자에 다른 내용이 저장되어 있습니다.', 413: '저장 요청이 너무 큽니다. 입력 길이를 확인하세요.'};
-  const readinessMessages={records_api_unavailable:'현재 연결된 서버에 수정본 저장 API가 준비되지 않았습니다. 서버 업데이트가 필요합니다.',records_schema_missing:'기록 DB의 수정본 저장 구조가 준비되지 않았습니다. DB 업데이트가 필요합니다.'};
-  function create({endpoint, getToken, fetchImpl = fetch}) {
+  const readinessMessages={support_schema_missing:'서버·DB에 새 구조도 저장 기능이 준비되지 않았습니다. 업데이트 후 다시 시도하세요.',records_api_unavailable:'현재 연결된 서버에 수정본 저장 API가 준비되지 않았습니다. 서버 업데이트가 필요합니다.',records_schema_missing:'기록 DB의 수정본 저장 구조가 준비되지 않았습니다. DB 업데이트가 필요합니다.'};
+  function create({endpoint, getToken, fetchImpl = fetch, includeSupport = false}) {
     const base = new URL(endpoint);
     if (base.protocol !== 'https:' || base.username || base.password || base.search || base.hash) throw Error('기록 서버 주소가 올바르지 않습니다.');
     const root = base.href.replace(/\/$/, '') + '/records';
@@ -17,7 +17,7 @@ const RecordClient = (() => {
         if (response.status === 401) { const renewed = await getToken({rejectedToken:token}); if (renewed && renewed !== token) response = await send(renewed); }
         if (!response.ok) {
           let body=null;try{body=await response.json();}catch{}
-          const code=body?.error==='records_schema_missing'?'records_schema_missing':null;
+          const code=['records_schema_missing','support_schema_missing'].includes(body?.error)?body.error:null;
           const error=Error(readinessMessages[code]||messages[response.status]||'기록 서버의 요청 처리에 실패했습니다. 잠시 후 다시 시도하세요.');
           error.status=response.status;if(code)error.code=code;throw error;
         }
@@ -26,7 +26,7 @@ const RecordClient = (() => {
       finally { clearTimeout(timer); }
     }
     function id(value) { if (!contract.uuid.test(value)) throw Error('기록 식별자 오류'); return encodeURIComponent(value); }
-    function page(cursor) { return cursor ? '?cursor=' + encodeURIComponent(cursor) : ''; }
+    function page(cursor) { const q=new URLSearchParams();if(cursor)q.set('cursor',cursor);if(includeSupport)q.set('support','1');return q.size?'?'+q:''; }
     async function ready(){
       if(!readiness)readiness=(async()=>{
         let result;
@@ -42,9 +42,12 @@ const RecordClient = (() => {
     async function prepared(path,options){await ready();return call(path,options);}
     return {
       list: cursor => prepared(page(cursor)),
-      detail: recordId => prepared('/' + id(recordId)),
+      detail: recordId => prepared('/' + id(recordId)+(includeSupport?'?support=1':'')),
       revisions: (recordId, cursor) => prepared('/' + id(recordId) + '/revisions' + page(cursor)),
-      save: (recordId, value) => prepared('/' + id(recordId) + '/revisions', {method: 'POST', body: contract.revision(value)}),
+      save: (recordId, value) => {
+        const body=contract.revision(value);
+        return (async()=>{if(!body.answers.relation){const caps=await call('?capabilities=2');if(caps?.supportSchemaVersion!==1||caps.optionalRelation!==true)throw Error('서버·DB 업데이트 후 빈 선택 설명을 저장할 수 있습니다.');}return prepared('/'+id(recordId)+'/revisions',{method:'POST',body});})();
+      },
       readRevision: (recordId, requestId) => prepared('/' + id(recordId) + '/revisions/' + id(requestId))
     };
   }

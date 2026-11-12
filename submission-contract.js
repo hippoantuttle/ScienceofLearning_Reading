@@ -1,10 +1,11 @@
 'use strict';
 const SubmissionContract=(()=>{
+ const support=typeof module!=='undefined'?require('./learning-support.js'):globalThis.LearningSupport;
  const fields=['structureType','mainIdea','primary','support','relation','retell','reflection','newWords','interests','rechecked'];
  const records=typeof module!=='undefined'?require('./record-contract.js'):RecordContract;
  function buildPayload(input,sessionId){
   if(!input||typeof input!=='object'||Array.isArray(input))throw new Error('제출 항목 오류');
-  const {articleTitle,sourceUrl,...legacy}=input;
+  const {articleTitle,sourceUrl,learningSupport,...legacy}=input;
   if(Object.keys(legacy).sort().join('|')!==[...fields].sort().join('|'))throw new Error('제출 항목 오류');
   const article=articleTitle!==undefined||sourceUrl!==undefined?records.article(articleTitle,sourceUrl):{};
   if(typeof sessionId!=='string'||!sessionId.trim()||sessionId.length>100)throw new Error('세션 식별자 오류');
@@ -12,7 +13,10 @@ const SubmissionContract=(()=>{
   for(const k of ['mainIdea','primary','support','relation','retell','reflection','newWords','interests']){
    if(typeof input[k]!=='string'||!input[k].isWellFormed()||input[k].includes('\0')||Array.from(input[k]).length>10000||(['mainIdea','primary','support','retell'].includes(k)&&!input[k].replace(/^[ \t\n\r\f\v]+|[ \t\n\r\f\v]+$/g,'')))throw new Error('제출 내용 오류');
   }
-  return {schemaVersion:1,sessionId,structureType:input.structureType,mainIdea:input.mainIdea,primary:input.primary,support:input.support,relation:input.relation.trim() ? input.relation : '',retell:input.retell,reflection:input.reflection,newWords:input.newWords,interests:input.interests,rechecked:input.rechecked,...article};
+  const context=learningSupport===undefined?{}:{learningSupport:support.validate(learningSupport,input)};
+  const payload={schemaVersion:learningSupport===undefined?1:2,sessionId,structureType:input.structureType,mainIdea:input.mainIdea,primary:input.primary,support:input.support,relation:input.relation.trim() ? input.relation : '',retell:input.retell,reflection:input.reflection,newWords:input.newWords,interests:input.interests,rechecked:input.rechecked,...article,...context};
+  if(typeof TextEncoder!=='undefined'&&new TextEncoder().encode(JSON.stringify(payload)).length>256000)throw Error('저장 요청이 너무 큽니다.');
+  return payload;
  }
  function createSubmission(adapter,newId){
   if(!adapter||typeof adapter.save!=='function'||typeof newId!=='function')throw new Error('저장 어댑터 필요');

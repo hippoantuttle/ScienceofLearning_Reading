@@ -10,6 +10,7 @@
     "ALLOWED_ORIGIN": "chrome-extension://jenapgoakhnmlmjcdnkfakkkgjobbfbb",
     "PILOT_AI_ENABLED": "false",
     "PILOT_ARTICLE_ENABLED": "false",
+    "PILOT_GUIDED_CANDIDATES_ENABLED": "false",
     "PILOT_FEEDBACK_ENABLED": "false",
     "PILOT_USER_DAILY_LIMIT": "5",
     "PILOT_GLOBAL_DAILY_LIMIT": "100"

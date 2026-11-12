@@ -22,6 +22,7 @@ async function fixture({optionalRelation = true} = {}){
   await db.exec(readFileSync(new URL('../server/migrations/001-pilot-draft.sql',import.meta.url),'utf8'));
   await db.exec(readFileSync(new URL('../server/migrations/20261110045614_revision_storage.sql',import.meta.url),'utf8'));
   if (optionalRelation) await db.exec(readFileSync(new URL('../server/migrations/20261112040245_optional_relation.sql',import.meta.url),'utf8'));
+  if(optionalRelation)await db.exec(readFileSync(new URL('../server/migrations/20261112042928_learning_support.sql',import.meta.url),'utf8'));
   await db.exec(`insert into pilot_members values ('${A}','participant',true),('${B}','team',true),('${C}','participant',false);`);
   async function asUser(owner,fn){
     return db.transaction(async tx=>{
@@ -35,6 +36,7 @@ async function fixture({optionalRelation = true} = {}){
     const url=new URL(raw),owner={A,B,C}[opt.headers.Authorization?.replace('Bearer ','')];trace.push({path:url.pathname,owner,method:opt.method});
     if(url.pathname==='/auth/v1/user')return owner?Response.json({id:owner}):new Response(null,{status:401});
     if(url.pathname.endsWith('/rpc/is_active_pilot_member'))return Response.json((await asUser(owner,tx=>tx.query('select public.is_active_pilot_member() as active'))).rows[0].active);
+    if(url.pathname.endsWith('/rpc/reading_support_capabilities')){try{return Response.json((await asUser(owner,tx=>tx.query('select public.reading_support_capabilities() as caps'))).rows[0].caps);}catch{return new Response(null,{status:404});}}
     const table=url.pathname.split('/').at(-1);
     assert.ok(['pilot_submissions','pilot_revisions'].includes(table));
     try{
@@ -45,6 +47,7 @@ async function fixture({optionalRelation = true} = {}){
           return null;
         }
         let sql='select '+(url.searchParams.get('select')?.includes('pilot_revisions')?"s.id,s.saved_at,s.article_title,s.source_url,(select coalesce(json_agg(x),'[]') from (select id from pilot_revisions r where r.submission_id=s.id limit 1) x) as pilot_revisions":'*')+' from '+table+' s where true';
+        if(url.searchParams.get('select')?.includes('pilot_revisions')&&url.searchParams.get('select').includes('learning_support'))sql=sql.replace(' from '+table,',s.learning_support from '+table);
         const params=[];
         for(const key of ['owner_id','id','session_id','submission_id','request_id']){
           const value=url.searchParams.get(key);if(!value)continue;assert.ok(value.startsWith('eq.'));params.push(value.slice(3));sql+=' and s.'+key+'=$'+params.length;
@@ -64,7 +67,7 @@ async function fixture({optionalRelation = true} = {}){
   async function request(path='',{method='GET',body,token='A',origin=env.ALLOWED_ORIGIN,key}={}){
     return handler(new Request('https://worker.invalid/submissions'+path,{method,headers:{...(origin?{Origin:origin}:{}),Authorization:'Bearer '+token,...(body?{'Content-Type':'application/json','Idempotency-Key':key||body.requestId||body.sessionId}:{})},...(body?{body:JSON.stringify(body)}:{})}),env);
   }
-  const io=token=>client({endpoint:'https://worker.invalid/submissions',getToken:()=>token,fetchImpl:(url,opt)=>request(url.replace('https://worker.invalid/submissions',''),{method:opt.method,body:opt.body?JSON.parse(opt.body):undefined,token,key:opt.headers['Idempotency-Key']})});
+  const io=(token,includeSupport=false)=>client({includeSupport,endpoint:'https://worker.invalid/submissions',getToken:()=>token,fetchImpl:(url,opt)=>request(url.replace('https://worker.invalid/submissions',''),{method:opt.method,body:opt.body?JSON.parse(opt.body):undefined,token,key:opt.headers['Idempotency-Key']})});
   return {db,asUser,trace,request,io};
 }
 
@@ -74,6 +77,7 @@ test('TASK-024 PostgreSQL: 선택 설명 migration 전후, 초기·수정본 빈
   assert.equal(saved.status,200); const original = await saved.json();
   assert.equal((await f.request('',{method:'POST',body:{...input(102),relation:''}})).status,503,'기존 DB는 빈 설명을 수용하지 않는다');
   await f.db.exec(readFileSync(new URL('../server/migrations/20261112040245_optional_relation.sql',import.meta.url),'utf8'));
+  await f.db.exec(readFileSync(new URL('../server/migrations/20261112042928_learning_support.sql',import.meta.url),'utf8'));
   const io = f.io('A'); assert.equal((await io.detail(original.submissionId)).payload.relation,answers.relation,'과거 설명 보존');
   for (const [index, relation] of ['', ' \t\n', '\u3000', '  합성 설명 유지  '].entries()) {
     const body = {...input(103+index),relation};
@@ -166,4 +170,30 @@ test('TASK-015 PostgreSQL: 원본 불변·다중 수정·멱등·경합·소유�
   await f.db.query('delete from pilot_submissions where id=$1',[metadataId]);
   await assert.rejects(io.detail(metadataId),error=>error.status===404);
   assert.equal((await io.list()).items.some(x=>x.submissionId===metadataId),false);
+});
+
+test('TASK-024 v2 PostgreSQL: 지원/최초 그래프·구형 응답·깊은 멱등·소유권·부모 삭제', {skip:!PGlite?'로컬 PGlite 필요':false}, async t=>{
+ const f=await fixture();t.after(()=>f.db.close());
+ const support={version:1,mode:'guided',activity:'graph',candidateExposure:true,requestStatus:'ready',attempts:1,segmentationVersion:'sentence-v1',promptVersion:'reading-candidates-v1',modelId:'synthetic',documentHash:'sha256:'+'1'.repeat(64),candidateIds:['s0001','s0002','s0003'],graph:{nodes:[{id:'n1',sentenceId:'s0001',text:answers.primary,role:'primary',source:'ai_candidate',order:0},{id:'n2',sentenceId:'s0002',text:answers.support,role:'support',source:'ai_candidate',order:1}],edges:[{from:'n2',to:'n1',relationType:'supports'}]}};
+ const payload={...input(301),schemaVersion:2,relation:'',learningSupport:support};
+ assert.equal((await f.request('?capabilities=2')).status,200);
+ assert.equal((await f.db.query("select has_function_privilege('anon','public.reading_support_capabilities()','execute') as allowed")).rows[0].allowed,false);
+ assert.equal((await f.db.query("select relrowsecurity from pg_class where oid='public.pilot_submissions'::regclass")).rows[0].relrowsecurity,true);
+ const saved=await f.request('',{method:'POST',body:payload});assert.equal(saved.status,200);const receipt=await saved.json();
+ const io=f.io('A',true);assert.deepEqual((await io.detail(receipt.submissionId)).payload,payload);
+ assert.equal((await f.io('A').detail(receipt.submissionId)).payload.schemaVersion,1);
+ assert.equal('learningSupport' in (await f.io('A').detail(receipt.submissionId)).payload,false);
+ assert.deepEqual((await io.list()).items[0].learningSupport,support);
+ assert.equal((await f.request('',{method:'POST',body:structuredClone(payload)})).status,200);
+ assert.equal((await f.request('',{method:'POST',body:{...payload,learningSupport:{...support,modelId:'different-model'}}})).status,409);
+ const edited=await io.save(receipt.submissionId,{requestId:sid(302),answers:{...answers,relation:'',mainIdea:'수정된 합성 중심'}});
+ assert.equal(edited.revision.answers.relation,'');assert.deepEqual((await io.detail(receipt.submissionId)).payload.learningSupport,support);
+ await assert.rejects(f.io('B',true).detail(receipt.submissionId),e=>e.status===404);
+ await assert.rejects(f.io('C',true).detail(receipt.submissionId),e=>e.status===403);
+ await assert.rejects(f.asUser(A,tx=>tx.query("update pilot_submissions set learning_support=null")),e=>e.code==='42501');
+ await assert.rejects(f.db.query('update pilot_submissions set learning_support=null where id=$1',[receipt.submissionId]),e=>e.code==='23514');
+ await assert.rejects(f.db.query("update pilot_submissions set learning_support='{}'::jsonb where id=$1",[receipt.submissionId]),e=>e.code==='23514');
+ await f.db.query('delete from pilot_submissions where id=$1',[receipt.submissionId]);
+ await assert.rejects(io.detail(receipt.submissionId),e=>e.status===404);
+ assert.equal((await f.db.query('select * from pilot_revisions where submission_id=$1',[receipt.submissionId])).rows.length,0);
 });

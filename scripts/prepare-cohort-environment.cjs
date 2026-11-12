@@ -3,7 +3,7 @@
 const fs=require('node:fs'),path=require('node:path'),crypto=require('node:crypto');
 const {validateConfig,extensionId}=require('./build-extension.cjs');
 const ROOT=path.resolve(__dirname,'..');
-const SOURCES=['server/pilot-access.mjs','server/ai/pilot-worker.mjs','server/ai/worker.mjs','server/ai/feedback.mjs','server/ai/prompts/pre-reading-v2.mjs','server/submissions/worker.mjs','server/submissions/records.mjs','record-contract.js','server/migrations/20261110140000_google_cohort_access.sql'];
+const SOURCES=['server/migrations/20261112040245_optional_relation.sql','server/migrations/20261112042928_learning_support.sql','sentence-source.js','reading-support-contract.js','learning-support.js','server/ai/reading-candidates.mjs','server/ai/prompts/reading-candidates-v1.mjs','server/pilot-access.mjs','server/ai/pilot-worker.mjs','server/ai/worker.mjs','server/ai/feedback.mjs','server/ai/prompts/pre-reading-v2.mjs','server/submissions/worker.mjs','server/submissions/records.mjs','record-contract.js','server/migrations/20261110140000_google_cohort_access.sql'];
 const sha=value=>crypto.createHash('sha256').update(value).digest('hex');
 const MAX_WINDOW_MS=31*86400000;
 function prepare({config,label,cohortId,capacity=5,expiresAt,unlimited=false,now=Date.now(),root=ROOT}={}){
@@ -15,14 +15,14 @@ function prepare({config,label,cohortId,capacity=5,expiresAt,unlimited=false,now
  const id=extensionId(JSON.parse(fs.readFileSync(path.join(root,'manifest.json'),'utf8')).key);
  const vars={SUPABASE_URL:settings.authUrl,ALLOWED_ORIGIN:'chrome-extension://'+id,PILOT_COHORT_ID:cohortId,PILOT_COHORT_EXPIRES_AT:expiresAt};
  const ai={name:'reading-ai-pilot',main:'server/ai/pilot-worker.mjs',compatibility_date:'2026-01-01',workers_dev:true,
-  vars:{...vars,PILOT_SELFTEST_ONLY:'false',PILOT_AI_ENABLED:'false',PILOT_ARTICLE_ENABLED:'false',PILOT_FEEDBACK_ENABLED:'false',PILOT_USER_DAILY_LIMIT:userLimit,PILOT_GLOBAL_DAILY_LIMIT:globalLimit},
+  vars:{...vars,PILOT_SELFTEST_ONLY:'false',PILOT_AI_ENABLED:'false',PILOT_ARTICLE_ENABLED:'false',PILOT_GUIDED_CANDIDATES_ENABLED:'false',PILOT_FEEDBACK_ENABLED:'false',PILOT_USER_DAILY_LIMIT:userLimit,PILOT_GLOBAL_DAILY_LIMIT:globalLimit},
   durable_objects:{bindings:[{name:'PILOT_BUDGET',class_name:'PilotBudget'}]},migrations:[{tag:'v1',new_sqlite_classes:['PilotBudget']}]};
  const active=structuredClone(ai);for(const name of ['PILOT_AI_ENABLED','PILOT_ARTICLE_ENABLED','PILOT_FEEDBACK_ENABLED'])active.vars[name]='true';
  const submissions={name:'reading-submissions-pilot',main:'server/submissions/worker.mjs',compatibility_date:'2026-01-01',workers_dev:true,vars};
  const outputs={
   'wrangler.ai.disabled.json':ai,'wrangler.ai.review.json':active,'wrangler.submissions.review.json':submissions,
-  'extension.google.public.json':{...settings,googleLoginEnabled:true,articleTestEnabled:false,feedbackTestEnabled:false},
-  'extension.google-ai-review.public.json':{...settings,googleLoginEnabled:true,articleTestEnabled:true,feedbackTestEnabled:true}
+  'extension.google.public.json':{...settings,guidedReadingEnabled:false,googleLoginEnabled:true,articleTestEnabled:false,feedbackTestEnabled:false},
+  'extension.google-ai-review.public.json':{...settings,guidedReadingEnabled:false,googleLoginEnabled:true,articleTestEnabled:true,feedbackTestEnabled:true}
  };
  const source={};for(const name of SOURCES){const file=path.join(root,name);if(fs.lstatSync(file).isSymbolicLink()||!fs.lstatSync(file).isFile())throw Error('일반 소스만 허용합니다.');source[name]=fs.readFileSync(file);}
  const parent=path.join(root,'build');fs.mkdirSync(parent,{recursive:true});

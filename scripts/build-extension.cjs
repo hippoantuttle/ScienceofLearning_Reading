@@ -9,6 +9,7 @@ const ROOT = path.resolve(__dirname, '..');
 const RUNTIME = Object.freeze([
   'background.js', 'content.js', 'sidepanel.html', 'sidepanel.css',
   'panel-ui.js', 'worksheet.js', 'ai-client.js', 'submission-client.js',
+  'sentence-source.js','reading-support-contract.js','learning-support.js','reading-support.js','guided-panel.js','support-view.js',
   'record-contract.js', 'record-client.js', 'submission-contract.js',
   'submission-http.js', 'submission-auth.js', 'google-auth.js', 'session-auth.js', 'panel-session.js', 'submission-flow.js',
   'sidepanel.js', 'submission-panel.js', 'pilot-ai-panel.js',
@@ -31,7 +32,7 @@ function publicUrl(value, field, pathname) {
 }
 
 function validateConfig(input) {
-  if (!input || Array.isArray(input) || Object.keys(input).filter(key=>key!=='googleLoginEnabled').sort().join() !== [...CONFIG_KEYS].sort().join() || ('googleLoginEnabled' in input&&typeof input.googleLoginEnabled!=='boolean'))
+  if (!input || Array.isArray(input) || Object.keys(input).filter(key=>!['googleLoginEnabled','guidedReadingEnabled'].includes(key)).sort().join() !== [...CONFIG_KEYS].sort().join() || (['googleLoginEnabled','guidedReadingEnabled'].some(k=>k in input&&typeof input[k]!=='boolean')))
     throw Error('공개 설정은 지정된 필드와 선택적 Google 로그인 스위치만 허용합니다.');
   if (CONFIG_KEYS.slice(0, 4).some(key => typeof input[key] !== 'string')) throw Error('공개 키와 주소는 문자열이어야 합니다.');
   const auth = publicUrl(input.authUrl, 'authUrl', '/');
@@ -43,7 +44,7 @@ function validateConfig(input) {
     if (ai.origin === submission.origin) throw Error('이 프로젝트의 AI Worker와 제출 Worker 주소를 구분하세요.');
     if (ai.hostname === 'reading-prereading-experiment.patrick020308.workers.dev') throw Error('과거 고정 예문 실험 Worker는 현재 확장 AI 계약과 호환되지 않습니다.');
   }
-  else if (input.articleTestEnabled || input.feedbackTestEnabled) throw Error('AI 활성화에는 승인된 aiEndpoint가 필요합니다.');
+  else if (input.articleTestEnabled || input.feedbackTestEnabled || input.guidedReadingEnabled) throw Error('AI 활성화에는 승인된 aiEndpoint가 필요합니다.');
   const key = input.publicKey;
   let isPublic = typeof key === 'string' && /^sb_publishable_[A-Za-z0-9_-]+$/.test(key);
   if (typeof key === 'string' && /^eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/.test(key)) {
@@ -54,7 +55,7 @@ function validateConfig(input) {
     } catch { isPublic = false; }
   }
   if (!isPublic) throw Error('publishable 또는 해당 프로젝트의 legacy anon 공개 키만 허용합니다.');
-  return {...Object.fromEntries(CONFIG_KEYS.map(key => [key, input[key]])),...('googleLoginEnabled' in input?{googleLoginEnabled:input.googleLoginEnabled}:{})};
+  return {...Object.fromEntries(CONFIG_KEYS.map(key => [key, input[key]])),...Object.fromEntries(['googleLoginEnabled','guidedReadingEnabled'].filter(k=>k in input).map(k=>[k,input[k]]))};
 }
 
 // Explicit, balanced regions keep the development source testable. No minifier or
@@ -145,9 +146,10 @@ function readVendor(root) {
   return {files, listingHash: hash(listing)};
 }
 
-function assemble({root = ROOT, config, reviewOnly = false} = {}) {
+function assemble({root = ROOT, config, reviewOnly = false, guidedReview = false} = {}) {
+  if(guidedReview&&!reviewOnly)throw Error('초급 UI 검토는 네트워크 비활성 검토본에서만 허용합니다.');
   if (reviewOnly && config) throw Error('검토 전용 빌드에는 원격 설정을 넣지 않습니다.');
-  const settings = reviewOnly ? {authUrl:'', publicKey:'', endpoint:'', aiEndpoint:'', articleTestEnabled:false, feedbackTestEnabled:false} : validateConfig(config);
+  const settings = reviewOnly ? {authUrl:'', publicKey:'', endpoint:'', aiEndpoint:'', articleTestEnabled:false, feedbackTestEnabled:false,...(guidedReview?{guidedReadingEnabled:true}:{})} : validateConfig(config);
   const sourceManifest = readSource(root, 'manifest.json'), manifest = JSON.parse(sourceManifest);
   // Explicit manifest avoids accidentally inheriting new development permissions.
   const releaseManifest = {
@@ -184,9 +186,9 @@ function assemble({root = ROOT, config, reviewOnly = false} = {}) {
   return {files, sourceHashes, manifest:releaseManifest, extensionId:extensionId(manifest.key), reviewOnly};
 }
 
-function build({config, reviewOnly = false, label, root = ROOT} = {}) {
+function build({config, reviewOnly = false, guidedReview = false, label, root = ROOT} = {}) {
   if (!/^[a-z0-9][a-z0-9-]{0,63}$/.test(label || '')) throw Error('--label: 영문 소문자·숫자·하이픈 1~64자 필요');
-  const assembled = assemble({root, config, reviewOnly});
+  const assembled = assemble({root, config, reviewOnly, guidedReview});
   const git = args => execFileSync('git', args, {cwd:root, encoding:'utf8'}).trim();
   const revision = git(['rev-parse', 'HEAD']);
   const trackedChanges = git(['diff', 'HEAD', '--name-only', '--']).split(/\r?\n/).filter(Boolean);
@@ -194,7 +196,7 @@ function build({config, reviewOnly = false, label, root = ROOT} = {}) {
   const files = Object.entries(assembled.files).sort(([a], [b]) => a.localeCompare(b, 'en'));
   const zip = makeZip(assembled.files);
   const report = {
-    task:'TASK-017', mode:reviewOnly ? 'review-only-network-disabled' : 'remote-configured-unverified',
+    task:'TASK-017', guidedReview:!!guidedReview, mode:reviewOnly ? 'review-only-network-disabled' : 'remote-configured-unverified',
     version:assembled.manifest.version, revision, sourceDirty:!!status, trackedChanges,
     documentsDirty:!!git(['status', '--porcelain', '--untracked-files=normal', '--', 'docs', 'README.md']),
     sourceHashes:assembled.sourceHashes, builderSha256:hash(fs.readFileSync(__filename)),
@@ -227,13 +229,14 @@ if (require.main === module) {
     while (args.length) {
       const flag = args.shift();
       if (flag === '--review-only') options.reviewOnly = true;
+      else if(flag==='--guided-review')options.guidedReview=true;
       else if (flag === '--label' && args.length) options.label = args.shift();
       else if (flag === '--config' && args.length) {
         const file = args.shift();
         if (!file.endsWith('.public.json')) throw Error('설정은 명시한 *.public.json 파일만 허용합니다.');
         if (fs.lstatSync(file).isSymbolicLink()) throw Error('설정 symlink 금지');
         options.config = JSON.parse(fs.readFileSync(file, 'utf8'));
-      } else throw Error('사용법: node scripts/build-extension.cjs --label <이름> (--review-only | --config <설정.public.json>)');
+      } else throw Error('사용법: node scripts/build-extension.cjs --label <이름> (--review-only [--guided-review] | --config <설정.public.json>)');
     }
     const result = build(options);
     console.log(JSON.stringify({output:result.destination, mode:result.report.mode, extensionId:result.report.extensionId, zipSha256:result.report.zipSha256}));

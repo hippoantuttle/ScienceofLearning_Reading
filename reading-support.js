@@ -48,7 +48,7 @@ var ReadingSupport = (() => {
     if (!['guided','independent'].includes(mode)) throw Error('invalid_mode');
     let snapshot = null;
     try { if (kind === 'web') snapshot = source.segment(article); } catch {}
-    let phase = 'preparation', status = 'idle', generation = 0, attempts = 0, closed = false, controller = null, candidates = [], offered = [], exposed = false, retryable = false;
+    let phase = 'preparation', status = 'idle', generation = 0, attempts = 0, closed = false, controller = null, candidates = [], offered = [], exposed = false, retryable = false, failureReason = null;
     function cancel() { generation++; controller?.abort(); controller = null; }
     function close() { cancel(); closed = true; if (status === 'pending') status = 'cancelled'; }
     function current(g) { return g === generation && !closed && phase === 'reading'; }
@@ -59,7 +59,7 @@ var ReadingSupport = (() => {
         const body = {schemaVersion:1, requestId, segmentationVersion:source.VERSION, article:snapshot.article};
         contract.request(body);
         cancel(); const g = generation, localController = new AbortController(); controller = localController;
-        status = 'pending'; attempts++; retryable = false;
+        status = 'pending'; attempts++; retryable = false;failureReason=null;
         try {
           const documentHash = await source.hash(snapshot.article);
           if (!current(g)) return null;
@@ -70,7 +70,7 @@ var ReadingSupport = (() => {
           return {generation:g, sentences:snapshot.sentences.filter(s => candidates.includes(s.id)).map(s => ({...s}))};
         } catch (error) {
           if (!current(g)) return null; // Late failure is as stale as late success.
-          status = 'failed'; retryable = ![400,401,403,404,413,429].includes(error?.status);
+          status = 'failed'; failureReason=['disabled','cohort_expired','selftest_expired'].includes(error?.code)?error.code:({401:'unauthorized',403:'inactive',429:'limit',413:'too_large'})[error?.status] || (error?.name==='AbortError'?'timeout':/invalid/.test(error?.message||'')?'invalid_response':'unavailable'); retryable = ![400,401,403,404,413,429].includes(error?.status)&&!['disabled','cohort_expired','selftest_expired'].includes(failureReason);
           throw Error('candidate_request_failed');
         } finally { if (g === generation) controller = null; }
       },
@@ -84,9 +84,12 @@ var ReadingSupport = (() => {
         if (phase !== 'structuring' || !snapshot) throw Error('invalid_phase');
         contract.graph(graph, {structureType, sentences:snapshot.sentences, candidateIds:offered}); phase = 'mainIdea';
       },
+      canRetry() { return !closed && phase==='reading' && status==='failed' && retryable && attempts<2; },
+      resumeStructuring() { if(phase!=='mainIdea')throw Error('invalid_phase');phase='structuring'; },
+      revisit() { if(phase==='retell')phase='mainIdea'; },
       beginRetell() { if (!['structuring','mainIdea'].includes(phase)) throw Error('invalid_phase'); close(); phase = 'retell'; },
       visibleCandidates() { return exposed && ['reading','structuring','mainIdea'].includes(phase) && snapshot ? snapshot.sentences.filter(s => candidates.includes(s.id)).map(s => ({...s})) : []; },
-      state() { return {mode, phase, status, attempts, candidateExposure:exposed, candidateIds:offered.slice(), requestClosed:closed}; },
+      state() { return {mode, phase, status, attempts, candidateExposure:exposed, candidateIds:offered.slice(), requestClosed:closed,failureReason}; },
       dispose() { close(); phase = 'ended'; snapshot = null; candidates = []; offered = []; exposed = false; accountId = null; }
     };
   }

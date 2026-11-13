@@ -70,7 +70,15 @@
 - 단위를 지정할 때 마우스를 올리면 연보라 바탕이 글자를 가려 보기 불편하다는 지적이 있었다. hover는 이제 테두리만 실선 보라로 바꾸고 바탕은 투명하게 둔다(`pdf-viewer.css`).
 - 이미 선택한 단위의 옅은 바탕(`.selected`)과 읽기 중 현재 단위의 바탕은 그대로다.
 - 확인: 뷰어 화면에 합성 단위 상자를 넣고 hover → 바탕 `rgba(0,0,0,0)`, 테두리 solid `#6552D8`. 다른 상자는 점선 유지. 전체 검사 281 통과 / 실패 0 / skip 6. 실제 PDF로는 확인하지 않았다.
-- 이 수정을 반영한 설치본은 아래 「설치본 (hover 수정 반영)」을 쓴다. 그 위의 첫 설치본은 수정 전이다.
+- 이 수정을 반영한 설치본은 아래 「설치본 (hover 수정 반영)」을 쓴다. 그 아래 첫 설치본은 수정 전이다.
+
+## 설치본 (hover 수정 반영, 최신 · 2026-11-13)
+- 기준 커밋 `8da107d`, `sourceDirty:false`.
+- 실제 연결 설치본: `dist/task026-design-team5-ai-02/extension` 및 `extension.zip`
+  - ZIP SHA-256 `7c8f04302961893f66a85de2cc584092a7787934eff9e85cb3d38f14b8401f90`
+- 오프라인 검토본: `dist/task026-design-local-review-02/extension` 및 `extension.zip`
+  - ZIP SHA-256 `804d316065157a4fef26612e21589436d8ec745e037190963633e70cd3bc4c36`
+- 명령과 공개 설정은 아래 첫 설치본과 같다(라벨만 `-02`). 두 설치본 모두 hover 수정, `chip-select.js`, `ai-result-view.js`를 포함한다. `@development` 블록·비밀 파일·개발 폴더는 없다.
 
 ## 설치본 (2026-11-13)
 - 실제 연결 설치본: `dist/task026-design-team5-ai-01/extension` 및 `extension.zip`

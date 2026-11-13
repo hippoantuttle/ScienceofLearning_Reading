@@ -43,12 +43,12 @@ function feedbackValid(f){
     &&list(f.improvements,1,2,s=>keys(s,['quote','direction'])&&text(s.quote,300)&&text(s.direction,500))
     &&text(f.missingIdea,300,true);
 }
-function feedbackFormat(f){
-  const parts=['총평\n'+f.overall,'항목별 근거\n'+f.criteria.map(c=>`· ${c.name}: ${c.reason}`).join('\n'),
-    '잘한 점\n'+f.strengths.map((s,i)=>`${i+1}. "${s.quote}"\n   ${s.comment}`).join('\n'),
-    '개선 제안\n'+f.improvements.map((s,i)=>`${i+1}. "${s.quote}"\n   ${s.direction}`).join('\n')];
-  if(f.missingIdea)parts.push('다시 살펴볼 핵심 아이디어\n'+f.missingIdea);
-  return parts.join('\n\n');
+// 구조 그대로 표시: 총평 · 항목별 근거(항목명|이유) · 잘한 점/개선 제안(내 문장 인용 + 설명) · 누락 아이디어.
+function feedbackSections(f){
+  const sections=[{title:'총평',kind:'text',text:f.overall},{title:'항목별 근거',kind:'pairs',items:f.criteria.map(c=>[c.name,c.reason])},
+    {title:'잘한 점',kind:'quotes',items:f.strengths.map(s=>[s.quote,s.comment])},{title:'개선 제안',kind:'quotes',items:f.improvements.map(s=>[s.quote,s.direction])}];
+  if(f.missingIdea)sections.push({title:'다시 살펴볼 핵심 아이디어',kind:'text',text:f.missingIdea});
+  return sections;
 }
 function RecordAnswers(snapshot){return Object.fromEntries(feedbackFields.map(([field])=>[field,snapshot[field]]));}
 function feedbackDirty(){return !!feedbackState && feedbackFields.some(([field,id])=>{
@@ -98,7 +98,7 @@ feedbackEl('feedback-request').addEventListener('click',async()=>{
     const result=await response.json();
     if(result?.kind!=='feedback'||!feedbackValid(result.feedback))throw new Error('AI 피드백 형식이 올바르지 않습니다.');
     if(generation!==feedbackGeneration||state.flow.getToken()!==token)return;
-    feedbackEl('feedback-result').textContent=feedbackFormat(result.feedback); status.textContent='참고용 피드백입니다. 직접 판단하고 수정하세요.';
+    AIResultView.render(feedbackEl('feedback-result'),{sections:feedbackSections(result.feedback),level:3}); status.textContent='참고용 피드백입니다. 직접 판단하고 수정하세요.';
     globalThis.PanelUI?.tone(status,'success');
   }catch(error){
     if(generation!==feedbackGeneration)return;

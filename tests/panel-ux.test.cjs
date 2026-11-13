@@ -83,5 +83,23 @@ test('라이트/다크 본문·보조문구·버튼·상태 텍스트의 지정 
       assert.ok(contrast(colors['color-on-'+status],colors['color-'+status])>=4.5,status+' badge');
     }
     assert.ok(contrast(colors['color-border-emphasized'],colors.surface)>=3,'control boundary');
+    // TASK-026 chips, step tiles, badges and empty slots.
+    assert.ok(contrast(colors['color-on-neutral-muted'],colors['color-neutral-muted'])>=4.5,'neutral chip');
+    assert.ok(contrast(colors['color-text-accent'],colors['color-accent-muted'])>=4.5,'accent chip');
+    assert.ok(contrast(colors['color-on-success-muted'],colors['color-success-muted'])>=4.5,'done step');
+    assert.ok(contrast(colors['color-on-empty-muted'],colors['color-empty-muted'])>=4.5,'empty slot text');
+    assert.ok(contrast(colors['color-empty'],colors.surface)>=3,'empty slot boundary');
+    assert.ok(contrast(colors['color-text-accent'],colors.bg)>=4.5,'step eyebrow');
   }
+});
+test('TASK-026 구조 유형 칩은 기존 select를 유일한 컨트롤로 두고 시각만 따라간다',()=>{
+  const html=fs.readFileSync('sidepanel.html','utf8');
+  assert.match(html,/<select id="structure" data-chips>/);assert.match(html,/<select id="reading-mode" data-chips>/);
+  assert.ok(html.indexOf('chip-select.js')<html.indexOf('sidepanel.js'),'chip mirror loads before controllers');
+  const source=fs.readFileSync('chip-select.js','utf8');
+  assert.match(source,/aria-hidden', 'true'/);assert.match(source,/tabIndex = -1/);assert.match(source,/dispatchEvent\(new Event\('change'/);
+  const veil=html.match(/<div class="source-veil"[^>]*>/)[0];assert.match(veil,/aria-hidden="true"/);
+  for(const id of ['start-reading','to-retell','to-review','submission-send','revision-save'])assert.match(html,new RegExp('class="[^"]*step-footer[^"]*">\\s*<button id="'+id+'"'),id);
+  // AI/저장 동의 버튼은 떠 있는 바로 안내문을 가리지 않는다.
+  for(const id of ['start-reading','submission-send'])assert.match(html,new RegExp('class="[^"]*step-footer in-flow">\\s*<button id="'+id+'"'),id+' in flow');
 });

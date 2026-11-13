@@ -5,6 +5,7 @@ const path=require('node:path');
 const vm=require('node:vm');
 const base=require('../ai-client.js');
 const Worksheet=require('../worksheet.js');
+const FakeDom=require('./fake-dom.cjs');
 const good={terms:[{term:'가상 용어',definition:'가상 설명'}],background:['일반 배경'],structureType:'cause-effect'};
 const read=f=>fs.readFileSync(path.join(__dirname,'..',f),'utf8');
 
@@ -12,15 +13,17 @@ const read=f=>fs.readFileSync(path.join(__dirname,'..',f),'utf8');
 function setup({requestPilot,token='tok',aiEndpoint='https://ai.example.test/recommend',confirmReset=true,articleTestEnabled=false,fallback=false,allowRepeatedRecommendations=false}={}){
  const ids=['mock-token','mock-recommend','mock-result','mock-status','to-retell','retell-input','review-view','retell-view','revisit-note','back-to-reading','to-review','end-training','finish','finish-status','status','analyze','article-result','worksheet','form-error','reading','preparation','structure','primary-label','support-label','counts','fallback','start-reading','back','main-idea','primary','support','relation','prior','ai-email','ai-password','ai-login','ai-recommend','ai-result','ai-status','article-ai-preview','article-ai-card','article-ai-recommend','article-ai-status'];
  const e=Object.fromEntries(ids.map(id=>[id,{value:'',hidden:false,disabled:false,textContent:'',handlers:{},setAttribute(){},focus(){},addEventListener(t,f){this.handlers[t]=f}}]));
+ e['ai-result']=FakeDom.fakeNode('div',{value:'',hidden:false,disabled:false,handlers:{},setAttribute(){},focus(){},addEventListener(t,f){this.handlers[t]=f}});
  e.structure.value='claim';e.worksheet.reset=()=>{};e['ai-recommend'].disabled=true;
  const tab={id:1,windowId:2,url:'https://example.invalid/test'};
  const chrome={windows:{getCurrent:async()=>({id:2})},tabs:{query:async()=>[tab],get:async()=>tab,connect:()=>({onDisconnect:{addListener(){}},disconnect(){}}),sendMessage:async(_id,msg)=>msg.action==='EXTRACT_ARTICLE'?{status:'success',text:'가상 본문',wordCount:2,charCount:4,fallback,token:'fixture'}:{status:'success',enabled:false}},scripting:{executeScript:async()=>{}}};
  const calls={pilot:0,logins:0};
  const flow={getToken:()=>token,signIn:async()=>{calls.logins++}};
- const ctx=vm.createContext({document:{getElementById:id=>e[id]},chrome,URL,Worksheet,confirm:()=>confirmReset,
+ const ctx=vm.createContext({document:{getElementById:id=>e[id],createElement:FakeDom.createElement},chrome,URL,Worksheet,confirm:()=>confirmReset,
   AIContract:{...base,requestPilot:async(...a)=>{calls.pilot++;calls.args=a;return requestPilot(...a)}},
   SubmissionConfig:{aiEndpoint,articleTestEnabled,allowRepeatedRecommendations},panelFlow:()=>flow,resetPanelSubmission(){}});
  vm.runInContext(read('sidepanel.js'),ctx);
+ vm.runInContext(read('ai-result-view.js'),ctx);
  vm.runInContext(read('pilot-ai-panel.js'),ctx);
  return {e,calls,ctx};
 }
@@ -50,6 +53,10 @@ test('실제 글 추천은 기본 비활성(카드 숨김)이며, 켜지면 카�
  await e['article-ai-recommend'].handlers.click();
  assert.equal(calls.pilot,1); assert.equal(calls.args[2].article,'가상 본문');
  assert.match(e['ai-result'].textContent,/실제 글 기반/);
+ // TASK-026 후속: 용어 이름·뜻을 분리하고 소제목은 고정 위치(h4)에만 둔다.
+ const r=e['ai-result'];assert.deepEqual(r.find('ai-view-heading').map(h=>h.tag+':'+h.textContent),['h4:핵심 용어','h4:배경','h4:구조도 유형']);
+ assert.deepEqual(r.find('ai-view-terms')[0].children.map(c=>c.tag+':'+c.textContent),['dt:가상 용어','dd:가상 설명']);
+ assert.equal(r.find('badge')[0].textContent,'원인–결과');
 });
 
 test('본문 영역을 찾지 못하면 페이지 전체 전송을 차단하고 읽기 시작 시 미리보기를 지운다',async()=>{

@@ -36,10 +36,19 @@ export const tokens = {
   '--color-pdf-selection': ['#6552D814', '#B9ABFF1F'],
   '--color-pdf-current': ['#FFE68059', '#FFE68059'],
   '--color-pdf-current-border': ['#947000', '#947000'],
+  // TASK-026: neutral chips, coral empty slots and the source-text serif.
+  '--color-neutral-muted': ['#EFEDF6', '#2E2A42'],
+  '--color-on-neutral-muted': ['#4A475E', '#D9D3EA'],
+  '--color-empty': ['#C8603F', '#E8957A'],
+  '--color-empty-muted': ['#FFF3EE', '#3A2830'],
+  '--color-on-empty-muted': ['#A8452A', '#FFB6A4'],
   '--color-mask': '#25233A',
   '--color-on-mask': '#FFFFFF',
   '--font-family-body': 'system-ui, -apple-system, "Segoe UI", "Malgun Gothic", sans-serif',
+  // Only text copied from the source article uses this face; learner writing stays sans.
+  '--font-family-source': 'Georgia, "Noto Serif KR", "Nanum Myeongjo", Batang, serif',
   '--text-body-size': '.9375rem',
+  '--text-eyebrow-size': '.6875rem',
   '--text-body-leading': '1.65',
   '--text-heading-size': '1.125rem',
   '--text-section-size': '1.0625rem',
@@ -75,7 +84,10 @@ export const tokens = {
   '--size-sr-only': '1px',
   '--size-wire': '1.5',
   '--size-wire-selected': '3',
+  '--size-chip': '2rem',
+  '--size-footer-clearance': '6rem',
   '--shadow-surface': '0 .25rem 1.5rem var(--color-shadow)',
+  '--shadow-footer': '0 -.5rem 1.25rem var(--color-shadow)',
 };
 
 // Aliases keep existing controllers/renderers unchanged.

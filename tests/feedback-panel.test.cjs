@@ -1,10 +1,11 @@
-const {test}=require('node:test'),assert=require('node:assert/strict'),vm=require('node:vm'),fs=require('node:fs');
+const {test}=require('node:test'),assert=require('node:assert/strict'),vm=require('node:vm'),fs=require('node:fs'),FakeDom=require('./fake-dom.cjs');
 const SAMPLE={overall:'주제를 자기 말로 묶어 낸 점이 좋습니다.',criteria:[{name:'핵심 내용 포함',reason:'아마 4개를 담은 것 같습니다.'},{name:'변형/자기 언어화',reason:'복사 없이 재진술했습니다.'},{name:'정확성',reason:'왜곡이 없습니다.'},{name:'구조/응집성',reason:'연결어가 부족합니다.'}],strengths:[{quote:'재정리',comment:'핵심을 묶었습니다.'}],improvements:[{quote:'재정리',direction:'문장 사이 관계를 드러내 보세요.'}],missingIdea:'두 번째 근거'};
 function setup(){
- const e={};const document={getElementById(id){return e[id]??={value:'',checked:false,disabled:false,hidden:true,textContent:'',addEventListener(_t,f){this.click=f}}}};
+ const e={};const base=()=>({value:'',checked:false,disabled:false,hidden:true,addEventListener(_t,f){this.click=f}});
+ const document={createElement:FakeDom.createElement,getElementById(id){return e[id]??=id==='feedback-result'?FakeDom.fakeNode('div',base()):{...base(),textContent:''};}};
  const session={text:'자체 작성 글',fallback:false};let calls=0;
  const context={document,articleSession:session,SubmissionConfig:{feedbackTestEnabled:true,aiEndpoint:'http://127.0.0.1:8787/recommend'},URL,TextEncoder,setTimeout,clearTimeout,AbortController,fetch:async()=>{calls++;return {ok:true,json:async()=>({kind:'feedback',feedback:context.reply??SAMPLE})}}};
- vm.runInNewContext(fs.readFileSync('feedback-panel.js','utf8'),context);
+ vm.createContext(context);vm.runInContext(fs.readFileSync('ai-result-view.js','utf8'),context);vm.runInContext(fs.readFileSync('feedback-panel.js','utf8'),context);
  const snapshot={sessionId:'11111111-1111-4111-8111-111111111111',mainIdea:'최초',primary:'주장',support:'근거',relation:'관계',retell:'재정리'};
  return {e,context,snapshot,flow:{getToken:()=> 'token'},calls:()=>calls};
 }
@@ -15,7 +16,11 @@ test('저장 확인 전에는 피드백 카드가 없고, 저장 후 카드 안 
  assert.equal(t.e['feedback-article'].value,'자체 작성 글');
  await t.e['feedback-request'].click();assert.equal(t.calls(),1);
  const out=t.e['feedback-result'].textContent;
- assert.match(out,/총평\n주제를/);assert.match(out,/· 구조\/응집성: 연결어/);assert.match(out,/1\. "재정리"/);assert.match(out,/다시 살펴볼 핵심 아이디어\n두 번째 근거/);
+ assert.match(out,/총평\n주제를/);assert.match(out,/구조\/응집성\n연결어/);assert.match(out,/다시 살펴볼 핵심 아이디어\n두 번째 근거/);
+ // TASK-026 후속: 고정 위치만 구조화(소제목 h3, 항목명|이유, 내 문장 인용). 마크다운 기호는 쓰지 않는다.
+ const r=t.e['feedback-result'];assert.deepEqual(r.find('ai-view-heading').map(h=>h.tag+':'+h.textContent),['h3:총평','h3:항목별 근거','h3:잘한 점','h3:개선 제안','h3:다시 살펴볼 핵심 아이디어']);
+ assert.equal(r.find('ai-view-pairs')[0].children.length,8);assert.deepEqual(r.find('ai-view-quote').map(q=>q.textContent),['재정리','재정리']);
+ assert.doesNotMatch(out,/\*\*|#/);
  assert.doesNotMatch(out,/점수|\/4/);
 });
 test('수정은 최초 제출을 바꾸지 않고 원본과 수정본을 비교하며 초기화로 지운다',()=>{

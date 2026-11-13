@@ -43,3 +43,14 @@ body.reading .unit-block.selected { border: 0; border-left: var(--spacing-1) sol
 body.reading .unit-block.current { background: var(--color-pdf-current); border-left-color: var(--color-pdf-current-border); }
 body.reading .unit-block:not(.selected) .unit-badge { display: none; }
 @media (max-width: 43.75rem) { .toolbar { padding: var(--spacing-3); } .hint { flex-basis: 100%; } }
+
+/* TASK-026: unit chips and paragraph bars from the reference image.
+   Current unit = violet bar, completed = mint bar; no content judgement. */
+.unit-badge, .unit-badge:hover:not(:disabled) { top: -1.7em; padding: 0 var(--spacing-2); border-radius: var(--radius-pill); color: var(--color-text-accent); background: var(--color-accent-muted); box-shadow: inset 0 0 0 var(--border-thin) var(--accent); font-weight: 700; }
+.unit-badge.done, .unit-badge.done:hover:not(:disabled) { color: var(--color-on-success-muted); background: var(--color-success-muted); box-shadow: inset 0 0 0 var(--border-thin) var(--color-success); }
+button.unit-badge:hover:not(:disabled) { text-decoration: underline; }
+body.reading .unit-block.selected { border-left: var(--spacing-1) solid var(--color-border-emphasized); border-radius: 0; }
+body.reading .unit-block.selected:has(> .unit-badge.done) { border-left-color: var(--color-success); }
+body.reading .unit-block.current, body.reading .unit-block.current:has(> .unit-badge.done) { background: var(--color-pdf-selection); border-left-color: var(--accent); }
+.toolbar button, .toolbar select { border-radius: var(--radius-pill); }
+.toolbar input:not([type="file"]) { border-radius: var(--radius-element); }

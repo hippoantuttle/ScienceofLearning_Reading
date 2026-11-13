@@ -5,6 +5,14 @@
 const PILOT_AI_TYPE_LABEL = { 'claim-evidence': '주장–근거', 'cause-effect': '원인–결과', 'problem-solution': '문제–해결', unspecified: '추천 없음 (직접 선택)' };
 const PILOT_AI_SAFE_ERRORS = [...(AIContract.pilotMessages || []), 'AI 추천 서버 응답 시간이 초과되었습니다.', 'AI 응답 형식이 올바르지 않습니다.', 'AI 서버 주소가 올바르지 않습니다.', 'AI 추천 서버 요청이 실패했습니다.'];
 function pilotAiEl(id) { return document.getElementById(id); }
+// 구조 그대로 표시: 핵심 용어(이름 굵게) · 배경(목록) · 구조도 유형(배지). 빈 항목은 생략한다.
+function pilotAiShow(result, caption, data) {
+  const sections = [];
+  if (data.terms.length) sections.push({title: '핵심 용어', kind: 'terms', items: data.terms.map(item => [item.term, item.definition])});
+  if (data.background.length) sections.push({title: '배경', kind: 'list', items: data.background});
+  sections.push({title: '구조도 유형', kind: 'badge', text: PILOT_AI_TYPE_LABEL[data.structureType], note: '참고용 · 직접 선택'});
+  AIResultView.render(result, {caption, sections, level: 4});
+}
 function pilotAiClear() {
   pilotAiEl('ai-result').textContent = '';
   pilotAiEl('ai-result').hidden = true;
@@ -76,7 +84,7 @@ pilotAiEl('article-ai-recommend').addEventListener('click', async () => {
     const data = await recommendationGate.request(() => AIContract.requestPilot(token, SubmissionConfig.aiEndpoint, {article}));
     if (!data || authFlow.getToken() !== token || (typeof guidedSession!=='undefined'&&guidedSession?.mode==='guided') || document.getElementById('reading-mode')?.value==='guided') return;
     const result = pilotAiEl('ai-result');
-    result.textContent = `실제 글 기반 추천\n${data.terms.map(item => `${item.term}: ${item.definition}`).join('\n')}\n${data.background.join('\n')}\n구조도 유형: ${PILOT_AI_TYPE_LABEL[data.structureType]} (참고용, 직접 선택)`;
+    pilotAiShow(result, '실제 글 기반 추천', data);
     result.hidden = false;
     status.textContent = '추천을 아래에 표시했습니다. 참고용이며 답안에 자동으로 들어가지 않습니다.';
     globalThis.PanelUI?.tone(status,'success');
@@ -103,7 +111,7 @@ pilotAiEl('ai-recommend').addEventListener('click', async () => {
     const data = await recommendationGate.request(() => AIContract.requestPilot(token, SubmissionConfig.aiEndpoint));
     if (!data || authFlow.getToken() !== token || (typeof guidedSession!=='undefined'&&guidedSession?.mode==='guided') || document.getElementById('reading-mode')?.value==='guided') return; // 읽기 시작·로그아웃·새 시도로 폐기된 응답
     const result = pilotAiEl('ai-result');
-    result.textContent = `AI 추천 시험 결과 (읽은 글과 무관한 가상 예문 기반)\n${data.terms.map(item => `${item.term}: ${item.definition}`).join('\n')}\n${data.background.join('\n')}\n구조도 유형: ${PILOT_AI_TYPE_LABEL[data.structureType]} (참고용, 직접 선택)`;
+    pilotAiShow(result, 'AI 추천 시험 결과 (읽은 글과 무관한 가상 예문 기반)', data);
     result.hidden = false;
     status.textContent = '추천 결과가 아래에 표시됐습니다. 참고용이며 자동으로 입력되지 않습니다.';
     globalThis.PanelUI?.tone(status,'success');

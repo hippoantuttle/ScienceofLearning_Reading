@@ -66,6 +66,12 @@
 - 테스트: `tests/fake-dom.cjs`(신규 보조)로 패널 테스트의 DOM 스텁을 보강했다. 소제목 순서·레벨, 용어 dt/dd, 항목 8칸, 인용, 마크다운 기호 없음을 검사한다. 전체 287개 중 **281 통과 / 실패 0 / skip 6**.
 - 브라우저 합성 확인: 실제 렌더 함수에 합성 데이터를 넣어 360/420px, 라이트·다크에서 확인했다. 가로 넘침 없음. 실제 AI 응답으로는 확인하지 않았다.
 
+## 후속: PDF 단위 지정 hover (2026-11-13 사용자 요청)
+- 단위를 지정할 때 마우스를 올리면 연보라 바탕이 글자를 가려 보기 불편하다는 지적이 있었다. hover는 이제 테두리만 실선 보라로 바꾸고 바탕은 투명하게 둔다(`pdf-viewer.css`).
+- 이미 선택한 단위의 옅은 바탕(`.selected`)과 읽기 중 현재 단위의 바탕은 그대로다.
+- 확인: 뷰어 화면에 합성 단위 상자를 넣고 hover → 바탕 `rgba(0,0,0,0)`, 테두리 solid `#6552D8`. 다른 상자는 점선 유지. 전체 검사 281 통과 / 실패 0 / skip 6. 실제 PDF로는 확인하지 않았다.
+- 이 수정을 반영한 설치본은 아래 「설치본 (hover 수정 반영)」을 쓴다. 그 위의 첫 설치본은 수정 전이다.
+
 ## 설치본 (2026-11-13)
 - 실제 연결 설치본: `dist/task026-design-team5-ai-01/extension` 및 `extension.zip`
   - 명령: `node scripts/build-extension.cjs --config C:\Users\patri\ScienceofLearning_Reading\.claude\worktrees\guided-reading\build\task024-live-01\extension.guided.public.json --label task026-design-team5-ai-01` (TASK-025와 같은 공개 설정)

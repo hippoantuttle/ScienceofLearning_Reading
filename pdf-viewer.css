@@ -31,8 +31,9 @@ button.quiet { background: transparent; }
 /* Preserve PDF.js layer geometry and interaction states. */
 .unit-layer { position: absolute; inset: 0; pointer-events: none; z-index: 20; }
 .unit-block { position: absolute; pointer-events: auto; padding: 0; margin: 0; background: transparent; border: var(--border-strong) dashed var(--accent); border-radius: var(--radius-inner); cursor: pointer; }
-.unit-block:hover { background: var(--color-pdf-selection); }
 .unit-block.heading { border-color: var(--muted); }
+/* Hover marks only the outline so the text underneath stays fully visible. */
+.unit-block:hover { background: transparent; border-style: solid; border-color: var(--accent); }
 .unit-block.selected { border: var(--border-strong) solid var(--accent); background: var(--color-pdf-selection); }
 .unit-badge { position: absolute; left: calc(-1 * var(--border-strong)); top: -1.5em; font: 600 var(--text-small-size)/1.4 var(--font-family-body); color: var(--accent-fg); background: var(--accent); border: 0; border-radius: var(--radius-inner); padding: 0 var(--spacing-1); white-space: nowrap; pointer-events: auto; cursor: pointer; min-height: 0; }
 .unit-badge.done { background: var(--color-success); color: var(--color-on-success); }

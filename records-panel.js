@@ -89,6 +89,7 @@ recordsEl('records-open').addEventListener('click',async()=>{
     try{if(articleSession && !await restoreBlind())return;}finally{operationBusy=false;}
   }
   if(typeof resetGuided==='function')resetGuided();
+  if(typeof draftDiscard==='function')draftDiscard();
   recommendationGate.reset();
   if(typeof resetPilotAi==='function')resetPilotAi();
   if(typeof localPreviewReset==='function')localPreviewReset();

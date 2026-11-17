@@ -363,3 +363,23 @@ h2[data-eyebrow]::before {
   .chip-option[data-selected="true"] { outline: var(--border-strong) solid CanvasText; }
   .source-veil span { background: GrayText; }
 }
+
+/* TASK-027: step sections slide in on change; going back slides from the other side.
+   Display-only — gates, focus and blind/restore stay with each panel. */
+@keyframes step-enter-forward { from { opacity: 0; transform: translateX(.75rem); } to { opacity: 1; transform: none; } }
+@keyframes step-enter-back { from { opacity: 0; transform: translateX(-.75rem); } to { opacity: 1; transform: none; } }
+:is(#preparation, #reading, #retell-view, #review-view, #feedback-section, #records-section):not([hidden]) {
+  animation: step-enter-forward 220ms cubic-bezier(.2, .7, .3, 1) both;
+}
+body[data-step-dir="back"] :is(#preparation, #reading, #retell-view, #review-view):not([hidden]) { animation-name: step-enter-back; }
+.step-back { display: flex; flex-wrap: wrap; align-items: center; gap: var(--spacing-1) var(--spacing-2); margin-bottom: var(--spacing-3); }
+.step-back > p { flex: 1 1 100%; margin: 0; }
+.step-back button { margin: 0; }
+#training-context[data-saved="true"] ~ #review-view #review-back { display: none; }
+@media (prefers-reduced-motion: reduce) {
+  :is(#preparation, #reading, #retell-view, #review-view, #feedback-section, #records-section) { animation: none !important; }
+}
+
+/* TASK-027 C: resume offer for an unsaved training kept in session storage. */
+.draft-resume h2 { font-size: 1rem; margin: 0 0 var(--spacing-1); }
+.draft-resume p { margin-block: var(--spacing-1); }

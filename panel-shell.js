@@ -32,13 +32,28 @@ const PanelShell = (() => {
     if (note) note.hidden = !UNSAVED_STEPS.includes(current) || doc.getElementById('training-context')?.dataset?.saved === 'true';
     return current;
   }
+  // TASK-027: 단계가 바뀌면 전환 방향(앞/뒤)을 표시하고, 새 단계 시작이 화면 위로 벗어나 있으면 그 위치로 옮긴다.
+  // 화면 표시만 바꾸며 포커스 이동·학습 게이트는 각 패널이 계속 담당한다.
+  function stepDirection(from, to) {
+    const a = STEPS.indexOf(from), b = STEPS.indexOf(to);
+    return a >= 0 && b >= 0 && b < a ? 'back' : 'forward';
+  }
+  function announceStepChange(doc, from, to) {
+    if (!from || from === to) return;
+    if (doc.body?.dataset) doc.body.dataset.stepDir = stepDirection(from, to);
+    const section = doc.getElementById(to);
+    if (!section?.getBoundingClientRect || !section.scrollIntoView) return;
+    if (section.getBoundingClientRect().top >= 0) return;
+    // 즉시 이동: 움직임은 섹션 등장 전환이 담당하고, 부드러운 스크롤은 포커스 이동과 겹쳐 끊길 수 있다.
+    section.scrollIntoView({block: 'start', behavior: 'auto'});
+  }
   function start(doc) {
     applyDevTools(doc, devToolsEnabled(typeof SubmissionConfig === 'undefined' ? null : SubmissionConfig, typeof AIContract === 'undefined' ? null : AIContract));
-    renderStepper(doc);
-    const observer = new MutationObserver(() => renderStepper(doc));
+    let last = renderStepper(doc);
+    const observer = new MutationObserver(() => { const current = renderStepper(doc); announceStepChange(doc, last, current); last = current; });
     for (const id of STEPS) { const el = doc.getElementById(id); if (el) observer.observe(el, {attributes: true, attributeFilter: ['hidden']}); }
   }
-  return {STEPS, devToolsEnabled, applyDevTools, currentStep, renderStepper, start};
+  return {STEPS, devToolsEnabled, applyDevTools, currentStep, renderStepper, stepDirection, announceStepChange, start};
 })();
 if (typeof module !== 'undefined') module.exports = PanelShell;
 else PanelShell.start(document);

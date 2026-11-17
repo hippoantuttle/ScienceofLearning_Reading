@@ -33,6 +33,16 @@ var PdfWorksheet = (() => {
       // 모든 단위의 중심 생각을 써야 문서 구조도 단계로 넘어간다.
       toStructure() { if (sheet.firstIncomplete() !== null) throw new Error('모든 단위의 중심 생각을 작성하세요.'); sheet.mainIdea(); phase = 'structure'; },
       toUnits() { phase = 'units'; },
+      // TASK-027 C: 패널 임시저장용. 단위 수가 같을 때만 되살린다.
+      snapshot: () => ({mains: items.map(item => item.main), index, phase}),
+      restore(saved) {
+        if (!saved || !Array.isArray(saved.mains) || saved.mains.length !== items.length || saved.mains.some(m => typeof m !== 'string')) throw new Error('저장된 PDF 단위가 지금 뷰어와 다릅니다.');
+        saved.mains.forEach((main, at) => { items[at].main = main; });
+        index = Number.isInteger(saved.index) && saved.index >= 0 && saved.index < items.length ? saved.index : 0;
+        phase = 'units';
+        if (saved.phase === 'structure' && sheet.firstIncomplete() === null) { try { sheet.toStructure(); } catch { phase = 'units'; } }
+        return sheet.snapshot();
+      },
       mainIdea() {
         const value = items.map(item => `[${label(item)}] ${item.main.trim()}`).join('\n\n');
         if (Array.from(value).length > LIMIT) throw new Error(`${NAMES.mainIdea} 합계가 ${LIMIT.toLocaleString('ko-KR')}자를 넘습니다. 단위를 줄이거나 내용을 줄이세요.`);

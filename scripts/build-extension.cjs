@@ -13,7 +13,7 @@ const RUNTIME = Object.freeze([
   'record-contract.js', 'record-client.js', 'submission-contract.js',
   'submission-http.js', 'submission-auth.js', 'google-auth.js', 'session-auth.js', 'panel-session.js', 'submission-flow.js',
   'sidepanel.js', 'submission-panel.js', 'pilot-ai-panel.js',
-  'feedback-panel.js', 'records-panel.js', 'account-bar.js', 'panel-shell.js',
+  'feedback-panel.js', 'records-panel.js', 'account-bar.js', 'training-draft.js', 'draft-panel.js', 'panel-shell.js',
   'pdf-worksheet.js', 'pdf-paragraphs.js', 'pdf-units.js', 'pdf-viewer.js', 'pdf-viewer.html', 'pdf-viewer.css'
 ]);
 // TASK-019: 고정 버전 PDF.js. 목록·해시는 vendor/pdfjs/FILES.sha256에 고정하고 불일치 시 빌드를 거부한다.

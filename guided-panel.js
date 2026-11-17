@@ -16,10 +16,12 @@ function resetGuided(){
   if(guidedEl('to-retell')){guidedEl('to-retell').hidden=false;guidedEl('to-retell').disabled=false;}
   if(guidedEl('main-idea'))guidedEl('main-idea').disabled=false;
   if(guidedEl('guided-return'))guidedEl('guided-return').hidden=true;
+  if(guidedEl('guided-back-structure'))guidedEl('guided-back-structure').hidden=true;
 }
 function guidedInvalidate(){
   if(guidedSession?.mode!=='guided')return;
   guidedSession.board?.dispose();guidedSession.board=null;guidedSession.gate?.dispose();guidedSession.editor=null;guidedSession.snapshot=null;guidedSession.returnState=null;guidedSession.manualDraft=null;guidedInvalidated=true;
+  if(guidedEl('guided-back-structure'))guidedEl('guided-back-structure').hidden=true;
   for(const id of ['guided-candidates','guided-nodes','guided-edges','guided-source-list','summary-graph'])if(guidedEl(id))guidedEl(id).textContent='';
   guidedEl('guided-status').textContent='계정이나 글이 변경되었습니다. 글을 다시 연결해 새 훈련을 시작하세요.';
 }
@@ -100,6 +102,7 @@ function guidedBegin(){
   const phase=s.gate.state().phase;
   if(phase==='reading')s.gate.beginStructuring();else if(phase==='mainIdea')s.gate.resumeStructuring();
   s.revision=(s.revision||0)+1;s.stage='structuring';guidedEl('main-idea-block').hidden=false;guidedEl('main-idea').disabled=true;guidedEl('to-retell').hidden=false;guidedEl('to-retell').disabled=true;guidedEl('guided-retry').hidden=true;
+  if(guidedEl('guided-back-structure'))guidedEl('guided-back-structure').hidden=true;
   return s;
 }
 function guidedAction(fn){try{const result=fn();return result===undefined?true:result;}catch(e){guidedEl('guided-status').textContent=['글을 다시 연결하세요.'].includes(e.message)?e.message:'유형·양쪽 역할·연결 방향을 확인하세요. 사용 문장은 2~8개이며 각 문장에 연결이 필요합니다.';return false;}}
@@ -166,7 +169,7 @@ async function guidedAdvance(){
     else{const graph=s.editor.validate(),fields=s.editor.textFields();guidedEl('primary').value=fields.primary;guidedEl('support').value=fields.support;s.gate.beginMainIdea(graph,guidedEl('structure').value);}
     if(s.snapshot)s.hash=await SentenceSource.hash(s.snapshot.article);
     if(!guidedCurrent(s)||s.revision!==revision)return;
-    s.stage='mainIdea';guidedEl('main-idea-block').hidden=false;guidedEl('main-idea').disabled=false;guidedEl('to-retell').hidden=false;guidedEl('to-retell').disabled=false;guidedEl('main-idea').focus();
+    s.stage='mainIdea';guidedEl('main-idea-block').hidden=false;guidedEl('main-idea').disabled=false;guidedEl('to-retell').hidden=false;guidedEl('to-retell').disabled=false;if(guidedEl('guided-back-structure'))guidedEl('guided-back-structure').hidden=false;guidedEl('main-idea').focus();
     guidedEl('guided-status').textContent='구조도를 바탕으로 중심 생각을 자기 말로 작성하세요.';
   }catch{guidedEl('guided-status').textContent='구조 유형과 양쪽 역할을 채우고 문장들을 연결하세요. 추가 설명은 비워도 됩니다.';}
 }
@@ -206,8 +209,70 @@ guidedEl('guided-manual').addEventListener('click',()=>guidedAction(()=>{
   guidedEl('guided-status').textContent='구조도를 직접 작성한 뒤 중심 생각으로 이동하세요. 이전 구성 화면으로 돌아갈 수 있습니다.';
 }));
 guidedEl('guided-to-main').addEventListener('click',()=>guidedAdvance());
+// TASK-027: 중심 생각 단계에서 구조화 단계로 명시적으로 돌아간다. 작성한 중심 생각은 보존하고 AI 후보 요청은 다시 열지 않는다.
+guidedEl('guided-back-structure')?.addEventListener('click',()=>guidedAction(()=>{guidedBegin();guidedEl('guided-status').textContent='구조화 단계로 돌아왔습니다. 배치·연결을 고친 뒤 「구조도 확인 · 중심 생각 작성」을 다시 누르세요. 작성한 중심 생각은 유지됩니다.';guidedEl('structure').focus();}));
 guidedEl('structure').addEventListener('change',()=>{if(guidedSession?.mode==='guided')guidedAction(()=>{const s=guidedBegin();if(!s.manual){s.editor.selectType(guidedEl('structure').value);guidedRender();}});});
 guidedEl('guided-source-picker').addEventListener('toggle',()=>{if(!guidedEl('guided-source-picker').open)return;guidedAction(()=>{const s=guidedBegin();const list=guidedEl('guided-source-list');list.textContent='';for(const sentence of s.snapshot?.sentences||[])list.append(guidedSentenceButton(s,sentence));});});
 for(const id of ['primary','support'])guidedEl(id).addEventListener('input',()=>{if(guidedSession?.mode==='guided'&&guidedSession.manual)guidedAction(()=>guidedBegin());});
 if(SubmissionConfig.guidedReadingEnabled===true)chrome.tabs.onActivated?.addListener(info=>{if(guidedSession?.mode==='guided'&&info.windowId===guidedSession.session.windowId&&info.tabId!==guidedSession.session.tabId)guidedSession.gate.continueManually();});
 if(SubmissionConfig.guidedReadingEnabled===true)chrome.tabs.onUpdated?.addListener((id,change)=>{if(guidedSession?.mode==='guided'&&id===guidedSession.session.tabId&&(change.url||change.status==='loading'))guidedInvalidate();});
+// TASK-027 C: 임시저장용 초급 상태. 화면에 보인 후보 ID·노출 이력·사용자가 만든 배치·연결만 담는다(AI 응답 원문·토큰 제외).
+function guidedDraft(){
+  const s=guidedSession;if(!s||guidedInvalidated)return null;
+  if(s.mode!=='guided')return {mode:'independent'};
+  const g=s.gate.state();
+  return {mode:'guided',stage:s.stage==='mainIdea'?'mainIdea':'structuring',manual:!!s.manual,unsupported:!!s.unsupported,excluded:[...s.excluded],
+    gate:{phase:g.phase,status:g.status,attempts:g.attempts,candidateExposure:g.candidateExposure,candidateIds:g.candidateIds},
+    metadata:g.candidateExposure&&s.metadata?{promptVersion:s.metadata.promptVersion,modelId:s.metadata.modelId,documentHash:s.metadata.documentHash}:null,
+    graph:!s.manual&&s.editor?s.editor.read():null};
+}
+// 임시저장에서 이어가기. 읽기 시작 직후의 guidedStarted 대신 호출하며, AI 후보 요청을 절대 보내지 않는다.
+// 같은 글(본문 해시 일치)이 확인된 뒤에만 호출된다. 유형 변경으로 규칙에 맞지 않게 된 연결은 되살리지 못한다.
+async function guidedResume(d){
+  if(SubmissionConfig.guidedReadingEnabled!==true||articleSession?.kind==='pdf'||!d)return false;
+  if(d.mode!=='guided'){guidedSession={mode:'independent',session:articleSession};guidedPrepare();return true;}
+  const state={mode:'guided',session:articleSession,owner:guidedIdentity(),stage:'structuring',manual:!!d.manual,unsupported:!!d.unsupported,excluded:new Set(Array.isArray(d.excluded)?d.excluded.filter(x=>typeof x==='string'):[]),metadata:d.metadata||null};
+  try{state.snapshot=SentenceSource.segment(articleSession.text);}catch{}
+  state.gate=ReadingSupport.create({article:articleSession.text,accountId:state.owner,mode:'guided',enabled:SubmissionConfig.guidedReadingEnabled===true,kind:articleSession.fallback?'unsupported':'web'});
+  const g=state.gate.restore(d.gate||{});
+  if(g.candidateExposure&&!(state.metadata?.promptVersion&&state.metadata?.modelId&&state.metadata?.documentHash))throw Error('invalid_restore');
+  guidedSession=state;guidedInvalidated=false;
+  if(!state.manual&&state.snapshot){
+    state.editor=ReadingSupport.createEditor({article:state.snapshot.article,candidateIds:g.candidateIds});
+    const saved=d.graph||{},type=['claim','cause','problem'].includes(saved.structureType)?saved.structureType:(guidedEl('structure').value||'claim');
+    state.editor.selectType(type);guidedEl('structure').value=type;
+    const map=new Map();
+    for(const node of (Array.isArray(saved.nodes)?saved.nodes:[]).slice().sort((a,b)=>a.order-b.order)){
+      try{const added=state.editor.add(node.sentenceId).nodes.at(-1);map.set(node.id,added.id);if(['primary','support'].includes(node.role))state.editor.place(added.id,node.role);}catch{}
+    }
+    for(const edge of Array.isArray(saved.edges)?saved.edges:[]){try{state.editor.connect(map.get(edge.from),map.get(edge.to),edge.relationType);}catch{}}
+  }
+  if(typeof updateStructureLabels==='function')updateStructureLabels();
+  guidedEl('guided-work').hidden=false;guidedEl('manual-map').hidden=!state.manual;
+  guidedEl('guided-graph-controls').hidden=state.manual||!state.snapshot;
+  guidedEl('worksheet').insertBefore(guidedEl('main-idea-block'),guidedEl('form-error'));
+  guidedEl('main-idea-block').hidden=false;guidedEl('reading-mode').disabled=true;guidedEl('guided-retry').hidden=true;guidedEl('guided-return').hidden=true;
+  guidedEl('guided-manual').hidden=state.manual;guidedEl('guided-no-candidates').hidden=state.manual;
+  const list=guidedEl('guided-candidates');list.textContent='';
+  if(!state.manual&&state.snapshot){
+    if(g.candidateExposure)for(const sentence of state.snapshot.sentences.filter(x=>g.candidateIds.includes(x.id)&&!state.excluded.has(x.id)))list.append(guidedSentenceButton(state,sentence,true));
+    else{guidedEl('guided-source-picker').open=true;const source=guidedEl('guided-source-list');source.textContent='';for(const sentence of state.snapshot.sentences)source.append(guidedSentenceButton(state,sentence));}
+    guidedRender();
+  }
+  let stage='structuring';
+  if(d.stage==='mainIdea'&&(g.phase==='mainIdea'||(state.manual&&g.phase==='structuring'))){
+    try{
+      if(state.manual){if(!guidedEl('primary').value.trim()||!guidedEl('support').value.trim())throw Error('incomplete');}
+      else{const fields=state.editor.textFields();state.editor.validate();guidedEl('primary').value=fields.primary;guidedEl('support').value=fields.support;}
+      stage='mainIdea';
+    }catch{stage='structuring';}
+  }
+  if(stage==='structuring'&&state.gate.state().phase==='mainIdea')state.gate.resumeStructuring();
+  if(state.snapshot)state.hash=await SentenceSource.hash(state.snapshot.article);
+  state.stage=stage;
+  const main=stage==='mainIdea';
+  guidedEl('main-idea').disabled=!main;guidedEl('to-retell').hidden=false;guidedEl('to-retell').disabled=!main;
+  if(guidedEl('guided-back-structure'))guidedEl('guided-back-structure').hidden=!main;
+  guidedEl('guided-status').textContent='임시저장에서 이어서 합니다. 작성한 배치·연결과 이미 본 문장 후보를 되살렸고, 문장 후보는 다시 요청하지 않습니다.';
+  return true;
+}

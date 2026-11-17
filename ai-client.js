@@ -8,7 +8,7 @@ const AIContract = (() => {
     let reading = false, used = false, pending = false, generation = 0;
     return {
       async request(fetcher) {
-        if (reading || pending || (used && !allowRepeatedRequests)) throw new Error('추천은 읽기 전 한 번만 요청할 수 있습니다.');
+        if (reading || pending || (used && !allowRepeatedRequests)) throw new Error(allowRepeatedRequests ? '추천은 읽기 시작 전에만, 한 번에 하나씩 요청할 수 있습니다.' : '추천은 읽기 전 한 번만 요청할 수 있습니다.');
         used = true;
         pending = true;
         const id = generation;

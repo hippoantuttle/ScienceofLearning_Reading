@@ -35,6 +35,11 @@ test('설치본은 허용 목록만 읽고 개발 UI·주소·로컬 설정·서
     const vendorNames = Object.keys(readVendor(root).files);
     assert.ok(vendorNames.includes('vendor/pdfjs/pdf.min.mjs') && vendorNames.some(name => name.startsWith('vendor/pdfjs/cmaps/')));
     assert.deepEqual(Object.keys(result.files).sort(), [...RUNTIME, ...vendorNames, 'manifest.json', 'submission-config.js'].sort());
+    for(const page of ['sidepanel.html','pdf-viewer.html']){
+      const styles=[...result.files[page].toString().matchAll(/<link rel="stylesheet" href="([^"]+)"/g)].map(match=>match[1]);
+      assert.ok(styles.includes('ui-theme.css'),'shared theme is linked in '+page);
+      for(const style of styles)assert.ok(result.files[style]?.length,'packaged stylesheet '+style);
+    }
     const all = Object.values(result.files).map(b => b.toString()).join('\n');
     assert.doesNotMatch(all, /SYNTHETIC_EXCLUDED_SENTINEL|http:\/\/127\.0\.0\.1|submission-config\.local|requestMock|allowRepeatedRecommendations|@development-/);
     assert.doesNotMatch(result.files['sidepanel.html'].toString(), /dev-only|mock-token|local-preview|synthetic-submit/);
@@ -80,7 +85,8 @@ function panelFixture(files, fetchImpl, storageData = {}) {
     const id=tag[1];elements[id]=Object.assign(element(tag[0].match(/^<([\w-]+)/)[1]),{value:id==='structure'?'claim':id==='reading-mode'?'independent':'',hidden:/\shidden\b/.test(tag[0]),disabled:/\sdisabled\b/.test(tag[0])});
   }
   const tab = {id:1, windowId:2, url:'https://article.example.org/synthetic', title:'합성 제목'}, events = {}, calls = {blur:0, restore:0, network:0};
-  const chrome = {windows:{getCurrent:async()=>({id:2})}, scripting:{executeScript:async()=>{}}, tabs:{
+  const panelStorage = {session:{get:async key=>({[key]:structuredClone(storageData[key])}),set:async value=>Object.assign(storageData,structuredClone(value)),remove:async key=>{delete storageData[key]}}};
+  const chrome = {storage:panelStorage, windows:{getCurrent:async()=>({id:2})}, scripting:{executeScript:async()=>{}}, tabs:{
     query:async()=>[tab], get:async()=>tab,
     onActivated:{addListener(fn){events.activate=fn;}}, onUpdated:{addListener(fn){events.update=fn;}},
     connect:()=>({onDisconnect:{addListener(){}}, disconnect(){}}),
@@ -228,7 +234,10 @@ test('초급 설치본: 명시 요청→빈 역할/연결→직접 배치/연결
  await findBoardElement(t,'port:n2:right').handlers.click();await findBoardElement(t,'port:n1:left').handlers.click();
  const wireBeforeRetell=findBoardElement(t,'port:n2:top');
  await e['guided-to-main'].handlers.click();assert.equal(e['main-idea-block'].hidden,false);assert.equal(e['main-idea'].disabled,false);assert.equal(e['to-retell'].disabled,false);
- e['main-idea'].value='주민의 필요를 반영해 도서관 운영을 넓혔다.';e.relation.value='';
+ assert.equal(e['guided-back-structure'].hidden,false);e['main-idea'].value='주민의 필요를 반영해 도서관 운영을 넓혔다.';
+ await e['guided-back-structure'].handlers.click();assert.equal(e['main-idea'].disabled,true);assert.equal(e['to-retell'].disabled,true);assert.equal(e['guided-back-structure'].hidden,true);
+ assert.equal(e['main-idea'].value,'주민의 필요를 반영해 도서관 운영을 넓혔다.','구조화로 돌아가도 중심 생각 보존');assert.equal(models,1,'구조화 복귀는 AI 요청을 다시 열지 않는다');
+ await e['guided-to-main'].handlers.click();assert.equal(e['main-idea'].disabled,false);assert.equal(e['to-retell'].disabled,false);e.relation.value='';
  await e['to-retell'].handlers.click();assert.equal(e.reading.hidden,true);assert.equal(e['retell-view'].hidden,false);
  assert.equal(e['guided-nodes'].hidden,true);assert.equal(e['guided-edges'].hidden,true);assert.equal(e['guided-edge-tools'].hidden,true);
  await wireBeforeRetell.handlers.click();assert.equal(e['guided-nodes'].hidden,true,'Retell의 오래된 연결점 콜백으로 도움을 다시 열지 않는다');
@@ -628,4 +637,101 @@ test('초급 UI 검토본은 기본 비활성 제품 스위치와 분리되고 �
  const review=assemble({reviewOnly:true,guidedReview:true});assert.deepEqual(review.manifest.host_permissions,[]);assert.match(review.files['submission-config.js'].toString(),/"guidedReadingEnabled":true/);
  assert.match(review.manifest.content_security_policy.extension_pages,/connect-src 'self';/);
  assert.throws(()=>assemble({config,guidedReview:true}));assert.throws(()=>validateConfig({...config,guidedReadingEnabled:'true'}));
+});
+
+// TASK-027 C: 임시저장(chrome.storage.session)과 이어가기. 합성 글·답안만 사용하며 네트워크 호출이 없어야 한다.
+async function guidedMainIdeaPanel(){
+  const t=await startBlockReview(),e=t.elements;
+  await findBoardElement(t,'port:n2:right').handlers.click();await findBoardElement(t,'port:n1:left').handlers.click();
+  await e['guided-to-main'].handlers.click();assert.equal(e['main-idea'].disabled,false);
+  e['main-idea'].value='합성 중심 생각';e.relation.value='합성 이유';e.prior.value='합성 메모';
+  return t;
+}
+const draftKey='readingTrainingDraft';
+test('TASK-027 C: 초급 구조화 중 임시저장은 본문 없이 해시·배치·연결만 담고, 새 패널에서 AI 재요청 없이 그대로 이어간다',async()=>{
+  const t1=await guidedMainIdeaPanel();
+  await vm.runInContext('draftFlush()',t1.context);
+  const saved=t1.storageData[draftKey];assert.ok(saved,'임시저장 생성');
+  assert.equal(saved.step,'reading');assert.equal(saved.guided.stage,'mainIdea');assert.equal(saved.guided.graph.nodes.length,2);assert.equal(saved.guided.graph.edges.length,1);
+  assert.match(saved.article.textHash,/^[0-9a-f]{64}$/);assert.equal(JSON.stringify(saved).includes(guidedArticle),false,'글 본문 전체를 저장하지 않는다');
+  assert.equal(saved.fields['main-idea'],'합성 중심 생각');assert.equal(saved.owner,null);
+  const t2=panelFixture(assemble({reviewOnly:true,guidedReview:true}).files,null,t1.storageData),e=t2.elements;
+  await waitFor(()=>e['draft-resume'].hidden===false);assert.match(e['draft-resume-summary'].textContent,/읽기·구조화 단계/);
+  await e['draft-resume-continue'].handlers.click();
+  await waitFor(()=>e.reading.hidden===false&&vm.runInContext('guidedSession?.stage',t2.context)==='mainIdea');
+  assert.equal(e['draft-resume'].hidden,true);assert.equal(e['main-idea'].value,'합성 중심 생각');assert.equal(e['main-idea'].disabled,false);assert.equal(e.prior.value,'합성 메모');assert.equal(e.relation.value,'합성 이유');
+  const graph=JSON.parse(vm.runInContext('JSON.stringify(guidedSession.editor.validate())',t2.context));
+  assert.equal(graph.nodes.length,2);assert.equal(graph.edges.length,1);
+  assert.equal(vm.runInContext('guidedSession.gate.state().requestClosed',t2.context),true,'이어가기는 AI 후보 요청을 열지 않는다');
+  assert.equal(t2.calls.network,0);assert.equal(vm.runInContext('rechecked',t2.context),false,'읽기 단계 이어가기는 재확인이 아니다');
+  await e['to-retell'].handlers.click();assert.equal(e['retell-view'].hidden,false);
+});
+test('TASK-027 C: 다시 말하기 단계 이어가기는 원문을 다시 가리고 재확인으로 기록한다',async()=>{
+  const t1=await guidedMainIdeaPanel(),e1=t1.elements;
+  await e1['to-retell'].handlers.click();e1['retell-input'].value='합성 다시 말하기';
+  await vm.runInContext('draftFlush()',t1.context);assert.equal(t1.storageData[draftKey].step,'retell-view');
+  const t2=panelFixture(assemble({reviewOnly:true,guidedReview:true}).files,null,t1.storageData),e=t2.elements;
+  await waitFor(()=>e['draft-resume'].hidden===false);await e['draft-resume-continue'].handlers.click();
+  await waitFor(()=>e['retell-view'].hidden===false);
+  assert.equal(t2.calls.blur,1);assert.equal(e['retell-input'].value,'합성 다시 말하기');assert.equal(vm.runInContext('rechecked',t2.context),true);
+  assert.match(e['revisit-note'].textContent,/재확인/);assert.equal(e['guided-nodes'].hidden,true,'Retell에서 구조도 도움을 가린다');assert.equal(t2.calls.network,0);
+});
+test('TASK-027 C: 본문이 바뀌면 이어가지 않고 임시저장을 남기며, 삭제·훈련 종료·저장 완료 때 지운다',async()=>{
+  const t1=await guidedMainIdeaPanel();await vm.runInContext('draftFlush()',t1.context);
+  const changed={...structuredClone(t1.storageData),__articleText:'합성 도서관은 평일에만 문을 연다. 다른 글이다. 내용이 바뀌었다.'};
+  const t2=panelFixture(assemble({reviewOnly:true,guidedReview:true}).files,null,changed),e=t2.elements;
+  await waitFor(()=>e['draft-resume'].hidden===false);await e['draft-resume-continue'].handlers.click();
+  await waitFor(()=>/글 내용이/.test(e['draft-resume-status'].textContent));
+  assert.equal(e['draft-resume'].hidden,false);assert.ok(changed[draftKey],'불일치 시 임시저장 유지');
+  await e['draft-resume-discard'].handlers.click();await waitFor(()=>!changed[draftKey]);assert.equal(e['draft-resume'].hidden,true);
+  const t3=await guidedMainIdeaPanel();await vm.runInContext('draftFlush()',t3.context);
+  await t3.elements['to-retell'].handlers.click();await t3.elements['end-training'].handlers.click();await waitFor(()=>!t3.storageData[draftKey]);
+  const t4=await guidedMainIdeaPanel();await vm.runInContext('draftFlush()',t4.context);assert.ok(t4.storageData[draftKey]);
+  t4.elements['training-context'].dataset={saved:'true'};await vm.runInContext('draftFlush()',t4.context);assert.equal(t4.storageData[draftKey],undefined,'저장 완료 뒤에는 임시저장 삭제');
+});
+
+test('TASK-028 중급: 관계 카드 추가·빈칸 검사·삭제, 합친 값으로 정리·저장 값 구성, 임시저장 포함',async()=>{
+  const t=panelFixture(assemble({reviewOnly:true}).files),e=t.elements;
+  await e.analyze.handlers.click();await e['start-reading'].handlers.click();
+  e['main-idea'].value='합성 중심';e.primary.value='합성 주장 하나';e.support.value='합성 근거 하나';
+  assert.equal(e.pair2.hidden,true);assert.equal(e['pair1-title'].hidden,true);
+  await e['pair-add'].handlers.click();assert.equal(e.pair2.hidden,false);assert.equal(e['pair1-title'].hidden,false);
+  await e['pair-add'].handlers.click();e['pair3-primary'].value='지울 주장';
+  await e['pair3-remove'].handlers.click();assert.equal(e.pair3.hidden,true);assert.equal(e['pair3-primary'].value,'');
+  e['pair2-primary'].value='합성 주장 둘';
+  await e.worksheet.handlers.submit({preventDefault(){}});
+  assert.equal(t.calls.blur,0,'추가 관계의 빈칸이 있으면 원문을 가리지 않는다');
+  assert.equal(e['pair2-support'].attrs['aria-invalid'],'true');assert.match(e['pair2-support-error'].textContent,/관계 2/);
+  e['pair2-support'].value='합성 근거 둘';e['pair2-relation'].value='합성 이유 둘';
+  const packed=JSON.parse(vm.runInContext('JSON.stringify(worksheetSubmissionValues())',t.context));
+  assert.equal(packed.primary,'[관계 1]\n합성 주장 하나\n\n[관계 2]\n합성 주장 둘');
+  assert.equal(packed.relation,'[관계 1]\n\n\n[관계 2]\n합성 이유 둘');
+  const draft=await vm.runInContext('draftCollect()',t.context);
+  assert.equal(draft.fields['pair2-support'],'합성 근거 둘');assert.ok(vm.runInContext('TrainingDraft',t.context).validate(draft));
+  await e.worksheet.handlers.submit({preventDefault(){}});assert.equal(t.calls.blur,1);
+  e['retell-input'].value='합성 다시 말하기';await e['to-review'].handlers.click();
+  assert.equal(e['review-view'].hidden,false);
+  const view=e['summary-graph'].children.find(c=>c.className==='pair-view');
+  assert.ok(view,'정리 화면에 관계별 보기');assert.equal(view.children.length,2);assert.match(view.children[1].textContent,/합성 주장 둘.*합성 근거 둘.*합성 이유 둘/s);
+  assert.equal(e['summary-primary'].textContent,'위 관계별 보기 참고','같은 내용을 필드별로 반복하지 않는다');
+  vm.runInContext('pairReset()',t.context);assert.equal(e.pair2.hidden,true);assert.equal(e['pair2-primary'].value,'');
+  e['pair3-support'].value='복원된 근거';vm.runInContext('pairShowFilled()',t.context);
+  assert.equal(e.pair2.hidden,false);assert.equal(e.pair3.hidden,false);assert.equal(e.pair4.hidden,true,'값이 있는 마지막 카드까지 복원');
+});
+
+test('TASK-028 초급: 주장 기준 관계 카드에 연결된 근거가 묶이고, 카드에 바로 근거를 놓으면 연결까지 된다(저장 형식 동일)',async()=>{
+  const t=await startBlockReview(),e=t.elements;
+  const zone=role=>{const walk=node=>node.attrs?.['data-board-role']===role?node:node.children?.map(walk).find(Boolean);return walk(e['guided-nodes']);};
+  const pair=id=>{const walk=node=>node.attrs?.['data-pair']===id?node:node.children?.map(walk).find(Boolean);return walk(e['guided-nodes']);};
+  assert.ok(pair('n1'),'주장 블록마다 관계 카드');assert.match(zone('support').textContent,/주민들이 주말 운영을 요청했다/,'연결 전 근거는 짝 없는 영역');
+  await findBoardElement(t,'port:n2:top').handlers.click();await findBoardElement(t,'port:n1:bottom').handlers.click();
+  assert.match(pair('n1').textContent,/주민들이 주말 운영을 요청했다/);assert.doesNotMatch(zone('support').textContent,/주민들이/);
+  await e['guided-source-list'].children[2].children[1].handlers.click();
+  await findBoardElement(t,'pair-place:n1').handlers.click();
+  const g=JSON.parse(vm.runInContext('JSON.stringify(guidedSession.editor.validate())',t.context));
+  assert.deepEqual(g.edges,[{from:'n2',to:'n1',relationType:'supports'},{from:'n3',to:'n1',relationType:'supports'}]);
+  assert.match(pair('n1').textContent,/자원봉사자가/);
+  const fields=JSON.parse(vm.runInContext('JSON.stringify(guidedSession.editor.textFields())',t.context));
+  assert.equal(fields.support,'주민들이 주말 운영을 요청했다.\n자원봉사자가 운영을 돕는다.','저장 문자열 형식은 그대로');
+  assert.equal(t.calls.network,0);
 });

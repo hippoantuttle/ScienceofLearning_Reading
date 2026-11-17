@@ -10,7 +10,7 @@ function setup(){
     query:async()=>[tab],get:async()=>tab,onActivated:{addListener(fn){activate=fn;}},
     connect:()=>({onDisconnect:{addListener(){}},disconnect(){}}),
     sendMessage:async(_id,msg)=>{if(msg.action==='EXTRACT_ARTICLE')return {status:'success',text:'합성 글',token:'synthetic',charCount:4,wordCount:2};
-      if(msg.enabled){calls.blur++;return {status:'success',enabled:true};}
+      if(msg.enabled){calls.blur++;return options.blur===false?{status:'error',message:'합성 가림 실패'}:{status:'success',enabled:true};}
       calls.restore++;return options.restore?{status:'success',enabled:false}:{status:'error'};
     }
   }};
@@ -19,6 +19,11 @@ function setup(){
   return {elements,options,calls,context,document,focused:()=>focused,activate:info=>activate(info),fill(){for(const id of ['main-idea','primary','support','relation'])document.getElementById(id).value='직접 작성';}};
 }
 async function reading(t){await t.elements.analyze.handlers.click();await t.elements['start-reading'].handlers.click();}
+async function toReview(){
+  const t=setup();await reading(t);t.fill();await t.elements['to-retell'].handlers.click();
+  t.elements['retell-input'].value='합성 기억';await t.elements['to-review'].handlers.click();
+  assert.equal(t.elements['review-view'].hidden,false);return t;
+}
 
 test('폼 제출은 누락 칸 오류와 포커스를 제공하고 검사 통과 뒤 한 번만 가린다',async()=>{
   const t=setup();await reading(t);let prevented=0;
@@ -68,12 +73,79 @@ test('결과 알림은 항상 보이는 상태 영역이 담당하고 완료 버
   const context=vm.createContext({});vm.runInContext(fs.readFileSync('panel-ui.js','utf8'),context);assert.equal(typeof context.PanelUI.tone,'function');
 });
 test('라이트/다크 본문·보조문구·버튼·상태 텍스트의 지정 대비는 모두 4.5 이상이다',()=>{
-  const css=fs.readFileSync('sidepanel.css','utf8'),blocks=[...css.matchAll(/:root\s*\{([^}]+)\}/g)];
+  const css=fs.readFileSync('ui-theme.css','utf8'),blocks=[...css.matchAll(/:root\s*\{([^}]+)\}/g)];
+  assert.equal(blocks.length,2,'light and dark palettes must both be checked');
   const luminance=hex=>{const rgb=hex.replace('#','').match(/../g).map(n=>parseInt(n,16)/255).map(v=>v<=0.04045?v/12.92:((v+0.055)/1.055)**2.4);return rgb[0]*.2126+rgb[1]*.7152+rgb[2]*.0722;};
   const contrast=(a,b)=>{const x=luminance(a),y=luminance(b);return (Math.max(x,y)+.05)/(Math.min(x,y)+.05);};
-  for(const block of blocks){const colors=Object.fromEntries([...block[1].matchAll(/--([\w-]+):\s*(#[\da-f]{6})/g)].map(m=>[m[1],m[2]]));
+  const aliases=Object.fromEntries([...css.matchAll(/--([\w-]+):\s*var\(--([\w-]+)\)/g)].map(m=>[m[1],m[2]]));
+  for(const block of blocks){const colors=Object.fromEntries([...block[1].matchAll(/--([\w-]+):\s*(#[\da-fA-F]{6});/g)].map(m=>[m[1],m[2]]));
+    for(const [name,target] of Object.entries(aliases))if(colors[target])colors[name]=colors[target];
     for(const fg of ['fg','muted','danger','success','warning','accent'])for(const bg of ['bg','surface'])assert.ok(contrast(colors[fg],colors[bg])>=4.5,fg+'/'+bg);
     assert.ok(contrast(colors['accent-fg'],colors.accent)>=4.5,'primary button');
     assert.ok(contrast(colors.fg,colors['callout-bg'])>=4.5,'callout');
+    for(const status of ['success','warning','error']){
+      assert.ok(contrast(colors['color-text-'+status],colors['color-'+status+'-muted'])>=4.5,status+' callout');
+      assert.ok(contrast(colors['color-on-'+status],colors['color-'+status])>=4.5,status+' badge');
+    }
+    assert.ok(contrast(colors['color-border-emphasized'],colors.surface)>=3,'control boundary');
+    // TASK-026 chips, step tiles, badges and empty slots.
+    assert.ok(contrast(colors['color-on-neutral-muted'],colors['color-neutral-muted'])>=4.5,'neutral chip');
+    assert.ok(contrast(colors['color-text-accent'],colors['color-accent-muted'])>=4.5,'accent chip');
+    assert.ok(contrast(colors['color-on-success-muted'],colors['color-success-muted'])>=4.5,'done step');
+    assert.ok(contrast(colors['color-on-empty-muted'],colors['color-empty-muted'])>=4.5,'empty slot text');
+    assert.ok(contrast(colors['color-empty'],colors.surface)>=3,'empty slot boundary');
+    assert.ok(contrast(colors['color-text-accent'],colors.bg)>=4.5,'step eyebrow');
   }
+});
+test('TASK-026 구조 유형 칩은 기존 select를 유일한 컨트롤로 두고 시각만 따라간다',()=>{
+  const html=fs.readFileSync('sidepanel.html','utf8');
+  assert.match(html,/<select id="structure" data-chips>/);assert.match(html,/<select id="reading-mode" data-chips>/);
+  assert.ok(html.indexOf('chip-select.js')<html.indexOf('sidepanel.js'),'chip mirror loads before controllers');
+  const source=fs.readFileSync('chip-select.js','utf8');
+  assert.match(source,/aria-hidden', 'true'/);assert.match(source,/tabIndex = -1/);assert.match(source,/dispatchEvent\(new Event\('change'/);
+  const veil=html.match(/<div class="source-veil"[^>]*>/)[0];assert.match(veil,/aria-hidden="true"/);
+  for(const id of ['start-reading','to-retell','to-review','submission-send','revision-save'])assert.match(html,new RegExp('class="[^"]*step-footer[^"]*">\\s*<button id="'+id+'"'),id);
+  // AI/저장 동의 버튼은 떠 있는 바로 안내문을 가리지 않는다.
+  for(const id of ['start-reading','submission-send'])assert.match(html,new RegExp('class="[^"]*step-footer in-flow">\\s*<button id="'+id+'"'),id+' in flow');
+});
+test('TASK-027: 저장 전 정리 화면에서 읽기·구조화로 돌아가 고치면 내용을 보존하고 재확인으로 기록한다',async()=>{
+  const t=await toReview();
+  await t.elements['review-to-reading'].handlers.click();
+  assert.equal(t.elements['review-view'].hidden,true);assert.equal(t.elements.reading.hidden,false);assert.equal(t.focused(),'main-idea');
+  assert.equal(vm.runInContext('rechecked',t.context),true);assert.equal(t.elements.primary.value,'직접 작성');assert.equal(t.elements['retell-input'].value,'합성 기억');
+  assert.equal(t.calls.blur,1,'돌아갈 때 원문을 새로 가리지 않는다');
+  await t.elements['to-retell'].handlers.click();assert.equal(t.elements['retell-view'].hidden,false);assert.equal(t.calls.blur,2);
+});
+test('TASK-027: 정리 화면에서 다시 말하기로 돌아가면 원문을 다시 가리고 실패하면 정리 화면에 남는다',async()=>{
+  const t=await toReview();
+  t.options.blur=false;await t.elements['review-to-retell'].handlers.click();
+  assert.equal(t.elements['review-view'].hidden,false);assert.equal(t.elements['retell-view'].hidden,true);assert.match(t.elements['submission-status'].textContent,/가림 실패/);
+  assert.equal(vm.runInContext('rechecked',t.context),false,'가림 실패는 재확인 기록을 바꾸지 않는다');
+  t.options.blur=true;await t.elements['review-to-retell'].handlers.click();
+  assert.equal(t.elements['review-view'].hidden,true);assert.equal(t.elements['retell-view'].hidden,false);assert.equal(t.focused(),'retell-input');
+  assert.equal(t.elements['retell-input'].value,'합성 기억');assert.equal(vm.runInContext('rechecked',t.context),true);assert.match(t.elements['revisit-note'].textContent,/재확인/);
+});
+test('TASK-027: 저장 중·저장 후·재시도 대기 중에는 정리 화면에서 돌아가지 않는다',async()=>{
+  for(const block of ['saving','saved','pending']){
+    const t=await toReview();
+    if(block==='saving')t.document.getElementById('submission-send').disabled=true;
+    if(block==='saved')t.document.getElementById('training-context').dataset={saved:'true'};
+    if(block==='pending')t.context.panelSubmissionPending=()=>true;
+    await t.elements['review-to-reading'].handlers.click();await t.elements['review-to-retell'].handlers.click();
+    assert.equal(t.elements['review-view'].hidden,false,block);assert.equal(t.elements.reading.hidden,true,block);assert.equal(t.calls.blur,1,block);
+    assert.equal(vm.runInContext('rechecked',t.context),false,block);
+    if(block==='pending')assert.match(t.elements['submission-status'].textContent,/다시 시도/);
+  }
+});
+test('TASK-027: 정리 화면 고치기 버튼은 제목 아래에 있고 저장 후 CSS로 숨긴다',()=>{
+  const html=fs.readFileSync('sidepanel.html','utf8'),css=fs.readFileSync('sidepanel.css','utf8');
+  const review=html.slice(html.indexOf('id="review-view"'),html.indexOf('id="feedback-section"'));
+  assert.ok(review.indexOf('id="review-back"')>review.indexOf('id="step4"'));assert.ok(review.indexOf('id="review-back"')<review.indexOf('id="summary-main"'));
+  assert.match(review,/id="review-to-retell"/);assert.match(review,/id="review-to-reading"/);assert.match(review,/재확인으로 기록/);
+  assert.match(css,/#training-context\[data-saved="true"\] ~ #review-view #review-back \{ display: none; \}/);
+});
+test('TASK-027: 단계 전환은 동작 줄이기 설정에서 끈다',()=>{
+  const css=fs.readFileSync('sidepanel.css','utf8');
+  assert.match(css,/@keyframes step-enter-forward/);assert.match(css,/@keyframes step-enter-back/);
+  const reduced=css.slice(css.lastIndexOf('@media (prefers-reduced-motion: reduce)'));assert.match(reduced,/#review-view[\s\S]*animation: none/);
 });

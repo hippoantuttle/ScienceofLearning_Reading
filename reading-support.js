@@ -59,6 +59,24 @@ var ReadingSupport = (() => {
     function current(g) { return g === generation && !closed && phase === 'reading'; }
     return {
       start() { if (phase !== 'preparation') throw Error('invalid_phase'); phase = 'reading'; },
+      // TASK-027 C: 패널 임시저장에서 이어가기. 요청은 항상 닫힌 상태로 복원해 AI 후보를 다시 요청하지 않는다.
+      // 실제로 화면에 보였던 후보(노출 이력)만 되살리고, 받았지만 표시하지 않은 응답·진행 중 요청은 취소로 기록한다.
+      restore(saved) {
+        if (phase !== 'preparation' || !saved || typeof saved !== 'object') throw Error('invalid_phase');
+        const restoredPhase = saved.phase === 'retell' ? 'mainIdea' : saved.phase;
+        if (!['reading','structuring','mainIdea'].includes(restoredPhase)) throw Error('invalid_phase');
+        const ids = Array.isArray(saved.candidateIds) ? saved.candidateIds : [];
+        const validIds = !!snapshot && ids.length >= 2 && ids.length <= 5 && new Set(ids).size === ids.length && ids.every(id => snapshot.sentences.some(s => s.id === id));
+        if (saved.candidateExposure === true && !validIds) throw Error('invalid_restore');
+        if (!Number.isInteger(saved.attempts) || saved.attempts < 0 || saved.attempts > 2) throw Error('invalid_restore');
+        exposed = saved.candidateExposure === true;
+        offered = exposed ? snapshot.sentences.filter(s => ids.includes(s.id)).map(s => s.id) : [];
+        candidates = offered.slice();
+        attempts = saved.attempts;
+        status = exposed ? 'ready' : (['idle','failed','cancelled'].includes(saved.status) ? saved.status : 'cancelled');
+        failureReason = null; retryable = false; closed = true; phase = restoredPhase;
+        return this.state();
+      },
       async request(adapter, {consent, requestId} = {}) {
         if (closed || phase !== 'reading' || mode !== 'guided' || !enabled || !accountId || kind !== 'web' || !snapshot || snapshot.sentences.length < 2 || consent !== true || attempts >= 2 || status === 'pending' || status === 'ready' || (attempts > 0 && !retryable)) throw Error('request_not_allowed');
         const body = {schemaVersion:1, requestId, segmentationVersion:source.VERSION, article:snapshot.article};

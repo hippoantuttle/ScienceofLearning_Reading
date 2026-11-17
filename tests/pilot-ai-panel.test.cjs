@@ -5,6 +5,7 @@ const path=require('node:path');
 const vm=require('node:vm');
 const base=require('../ai-client.js');
 const Worksheet=require('../worksheet.js');
+const FakeDom=require('./fake-dom.cjs');
 const good={terms:[{term:'가상 용어',definition:'가상 설명'}],background:['일반 배경'],structureType:'cause-effect'};
 const read=f=>fs.readFileSync(path.join(__dirname,'..',f),'utf8');
 
@@ -12,15 +13,17 @@ const read=f=>fs.readFileSync(path.join(__dirname,'..',f),'utf8');
 function setup({requestPilot,token='tok',aiEndpoint='https://ai.example.test/recommend',confirmReset=true,articleTestEnabled=false,fallback=false,allowRepeatedRecommendations=false}={}){
  const ids=['mock-token','mock-recommend','mock-result','mock-status','to-retell','retell-input','review-view','retell-view','revisit-note','back-to-reading','to-review','end-training','finish','finish-status','status','analyze','article-result','worksheet','form-error','reading','preparation','structure','primary-label','support-label','counts','fallback','start-reading','back','main-idea','primary','support','relation','prior','ai-email','ai-password','ai-login','ai-recommend','ai-result','ai-status','article-ai-preview','article-ai-card','article-ai-recommend','article-ai-status'];
  const e=Object.fromEntries(ids.map(id=>[id,{value:'',hidden:false,disabled:false,textContent:'',handlers:{},setAttribute(){},focus(){},addEventListener(t,f){this.handlers[t]=f}}]));
+ e['ai-result']=FakeDom.fakeNode('div',{value:'',hidden:false,disabled:false,handlers:{},setAttribute(){},focus(){},addEventListener(t,f){this.handlers[t]=f}});
  e.structure.value='claim';e.worksheet.reset=()=>{};e['ai-recommend'].disabled=true;
  const tab={id:1,windowId:2,url:'https://example.invalid/test'};
  const chrome={windows:{getCurrent:async()=>({id:2})},tabs:{query:async()=>[tab],get:async()=>tab,connect:()=>({onDisconnect:{addListener(){}},disconnect(){}}),sendMessage:async(_id,msg)=>msg.action==='EXTRACT_ARTICLE'?{status:'success',text:'가상 본문',wordCount:2,charCount:4,fallback,token:'fixture'}:{status:'success',enabled:false}},scripting:{executeScript:async()=>{}}};
  const calls={pilot:0,logins:0};
  const flow={getToken:()=>token,signIn:async()=>{calls.logins++}};
- const ctx=vm.createContext({document:{getElementById:id=>e[id]},chrome,URL,Worksheet,confirm:()=>confirmReset,
+ const ctx=vm.createContext({document:{getElementById:id=>e[id],createElement:FakeDom.createElement},chrome,URL,Worksheet,confirm:()=>confirmReset,
   AIContract:{...base,requestPilot:async(...a)=>{calls.pilot++;calls.args=a;return requestPilot(...a)}},
   SubmissionConfig:{aiEndpoint,articleTestEnabled,allowRepeatedRecommendations},panelFlow:()=>flow,resetPanelSubmission(){}});
  vm.runInContext(read('sidepanel.js'),ctx);
+ vm.runInContext(read('ai-result-view.js'),ctx);
  vm.runInContext(read('pilot-ai-panel.js'),ctx);
  return {e,calls,ctx};
 }
@@ -33,11 +36,13 @@ test('로컬 개발 설정에서는 읽기 전 추천을 반복하되 읽기 시
  await e['start-reading'].handlers.click();assert.equal(e['article-ai-recommend'].disabled,true);
 });
 
-test('반복 설정이 있어도 원격 서버에서는 반복 제한을 유지한다',async()=>{
- const {e,calls}=setup({requestPilot:async()=>good,articleTestEnabled:true,allowRepeatedRecommendations:true});
+test('TASK-027 F: 원격 서버에서도 읽기 시작 전에는 추천을 다시 받고, 새 결과가 이전 결과를 대체하며 시작 후에는 차단한다',async()=>{
+ const {e,calls}=setup({requestPilot:async()=>good,articleTestEnabled:true});
  await e.analyze.handlers.click();
- await e['article-ai-recommend'].handlers.click();assert.equal(e['article-ai-recommend'].disabled,true);
- e['article-ai-recommend'].disabled=false;await e['article-ai-recommend'].handlers.click();assert.equal(calls.pilot,1);
+ await e['article-ai-recommend'].handlers.click();assert.equal(e['article-ai-recommend'].disabled,false);assert.match(e['article-ai-recommend'].textContent,/다시 받기/);
+ await e['article-ai-recommend'].handlers.click();assert.equal(calls.pilot,2);assert.equal(e['ai-result'].find('ai-view-heading').filter(h=>h.textContent==='핵심 용어').length,1,'이전 결과를 쌓지 않고 대체');
+ await e['start-reading'].handlers.click();assert.equal(e['article-ai-recommend'].disabled,true);
+ e['article-ai-recommend'].disabled=false;await e['article-ai-recommend'].handlers.click();assert.equal(calls.pilot,2,'읽기 시작 후 요청 없음');
 });
 
 test('실제 글 추천은 기본 비활성(카드 숨김)이며, 켜지면 카드의 전송 버튼 클릭으로만 요청한다',async()=>{
@@ -50,6 +55,10 @@ test('실제 글 추천은 기본 비활성(카드 숨김)이며, 켜지면 카�
  await e['article-ai-recommend'].handlers.click();
  assert.equal(calls.pilot,1); assert.equal(calls.args[2].article,'가상 본문');
  assert.match(e['ai-result'].textContent,/실제 글 기반/);
+ // TASK-026 후속: 용어 이름·뜻을 분리하고 소제목은 고정 위치(h4)에만 둔다.
+ const r=e['ai-result'];assert.deepEqual(r.find('ai-view-heading').map(h=>h.tag+':'+h.textContent),['h4:핵심 용어','h4:배경','h4:구조도 유형']);
+ assert.deepEqual(r.find('ai-view-terms')[0].children.map(c=>c.tag+':'+c.textContent),['dt:가상 용어','dd:가상 설명']);
+ assert.equal(r.find('badge')[0].textContent,'원인–결과');
 });
 
 test('본문 영역을 찾지 못하면 페이지 전체 전송을 차단하고 읽기 시작 시 미리보기를 지운다',async()=>{
@@ -72,7 +81,7 @@ test('실제 글 추천의 지연 응답은 읽기 시작 후 표시하지 않�
  assert.equal(calls.pilot,1); assert.equal(e['ai-result'].hidden,true); assert.equal(e['ai-result'].textContent,'');
 });
 
-test('글 연결 전에는 사용할 수 없고, 연결 후 로그인 토큰으로 한 번만 요청하며 결과는 자동 입력되지 않는다',async()=>{
+test('글 연결 전에는 사용할 수 없고, 연결 후 로그인 토큰으로 요청하며 결과는 자동 입력되지 않는다',async()=>{
  const {e,calls}=setup({requestPilot:async()=>good});
  assert.equal(e['ai-recommend'].disabled,true);
  await e['ai-recommend'].handlers.click();assert.equal(calls.pilot,0);
@@ -80,9 +89,9 @@ test('글 연결 전에는 사용할 수 없고, 연결 후 로그인 토큰으�
  await e['ai-recommend'].handlers.click();
  assert.equal(calls.pilot,1);assert.equal(calls.args[0],'tok');assert.equal(calls.args[1],'https://ai.example.test/recommend');
  assert.equal(e['ai-result'].hidden,false);assert.match(e['ai-result'].textContent,/가상 예문/);assert.match(e['ai-result'].textContent,/원인–결과/);
- assert.equal(e.structure.value,'claim');assert.equal(e['main-idea'].value,'');assert.equal(e['ai-recommend'].disabled,true);
- e['ai-recommend'].disabled=false;await e['ai-recommend'].handlers.click();
- assert.equal(calls.pilot,1);assert.match(e['ai-status'].textContent,/한 번만/);
+ assert.equal(e.structure.value,'claim');assert.equal(e['main-idea'].value,'');
+ assert.equal(e['ai-recommend'].disabled,false,'TASK-027 F: 읽기 전 반복 허용');await e['ai-recommend'].handlers.click();
+ assert.equal(calls.pilot,2);
 });
 
 test('읽기 시작 후에는 요청할 수 없고 결과가 지워지며, 읽기 시작 전에 보낸 늦은 응답은 폐기된다',async()=>{

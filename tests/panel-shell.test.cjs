@@ -44,3 +44,13 @@ test('TASK-021: 미저장 경고는 작성 단계에서 저장 확인 전까지�
  context.dataset.saved='true';PanelShell.renderStepper(doc);assert.equal(note.hidden,true,'저장 확인 후 숨김');
  delete context.dataset.saved;sections['feedback-section'].hidden=false;PanelShell.renderStepper(doc);assert.equal(note.hidden,true,'피드백 단계에서는 숨김');
 });
+test('TASK-027: 단계 전환 방향과 화면 밖 단계 시작으로의 이동',()=>{
+ assert.equal(PanelShell.stepDirection('reading','retell-view'),'forward');assert.equal(PanelShell.stepDirection('review-view','reading'),'back');assert.equal(PanelShell.stepDirection('preparation','records-section'),'forward');
+ const scrolls=[];let top=-40;
+ const section={getBoundingClientRect:()=>({top}),scrollIntoView:o=>scrolls.push(o)};
+ const doc={body:{dataset:{}},getElementById:()=>section};
+ PanelShell.announceStepChange(doc,'review-view','reading');assert.equal(doc.body.dataset.stepDir,'back');assert.deepEqual(scrolls,[{block:'start',behavior:'auto'}]);
+ PanelShell.announceStepChange(doc,'reading','retell-view');assert.equal(doc.body.dataset.stepDir,'forward');assert.equal(scrolls.length,2);
+ top=10;PanelShell.announceStepChange(doc,'retell-view','review-view');assert.equal(scrolls.length,2,'이미 보이면 움직이지 않는다');
+ PanelShell.announceStepChange(doc,'reading','reading');assert.equal(doc.body.dataset.stepDir,'forward');
+});

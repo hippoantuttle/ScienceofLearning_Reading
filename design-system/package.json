@@ -1,0 +1,18 @@
+{
+  "name": "reading-extension-design-system",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Build-time Astryx theme tooling; never included in the extension runtime.",
+  "scripts": {
+    "build": "astryx theme build theme.ts --out dist/reading-lavender.css && node export-css.mjs",
+    "check": "astryx theme build theme.ts --out dist/reading-lavender.css --check && node export-css.mjs --check"
+  },
+  "devDependencies": {
+    "@astryxdesign/cli": "0.7.14",
+    "@astryxdesign/core": "0.7.14",
+    "@stylexjs/stylex": "0.19.2",
+    "react": "19.3.1",
+    "react-dom": "19.3.1"
+  }
+}

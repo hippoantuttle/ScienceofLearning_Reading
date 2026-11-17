@@ -7,13 +7,13 @@ const vm = require('node:vm');
 const {execFileSync} = require('node:child_process');
 const ROOT = path.resolve(__dirname, '..');
 const RUNTIME = Object.freeze([
-  'background.js', 'content.js', 'sidepanel.html', 'sidepanel.css',
-  'panel-ui.js', 'worksheet.js', 'ai-client.js', 'submission-client.js',
+  'background.js', 'content.js', 'sidepanel.html', 'sidepanel.css', 'ui-theme.css',
+  'panel-ui.js', 'chip-select.js', 'ai-result-view.js','worksheet.js', 'ai-client.js', 'submission-client.js',
   'sentence-source.js','reading-support-contract.js','learning-support.js','reading-support.js','guided-board.js','guided-panel.js','support-view.js',
   'record-contract.js', 'record-client.js', 'submission-contract.js',
   'submission-http.js', 'submission-auth.js', 'google-auth.js', 'session-auth.js', 'panel-session.js', 'submission-flow.js',
   'sidepanel.js', 'submission-panel.js', 'pilot-ai-panel.js',
-  'feedback-panel.js', 'records-panel.js', 'account-bar.js', 'panel-shell.js',
+  'feedback-panel.js', 'records-panel.js', 'account-bar.js', 'training-draft.js', 'draft-panel.js', 'relation-pairs.js', 'pair-panel.js', 'panel-shell.js',
   'pdf-worksheet.js', 'pdf-paragraphs.js', 'pdf-units.js', 'pdf-viewer.js', 'pdf-viewer.html', 'pdf-viewer.css'
 ]);
 // TASK-019: 고정 버전 PDF.js. 목록·해시는 vendor/pdfjs/FILES.sha256에 고정하고 불일치 시 빌드를 거부한다.

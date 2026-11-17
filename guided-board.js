@@ -1,6 +1,7 @@
 'use strict';
 var GuidedBoard = (() => {
   const contract = typeof module !== 'undefined' ? require('./reading-support-contract.js') : ReadingSupportContract;
+  const RelationPairs = typeof module !== 'undefined' ? require('./relation-pairs.js') : globalThis.RelationPairs;
   const types = {
     claim:{primary:'주장',support:'근거',relation:'뒷받침',direction:'근거 → 주장'},
     cause:{primary:'원인',support:'결과',relation:'이어짐',direction:'원인 → 결과'},
@@ -164,6 +165,17 @@ var GuidedBoard = (() => {
       port.addEventListener('lostpointercapture',()=>{if(gesture?.capture===port){stopGesture();schedule();}});
       return port;
     }
+    // TASK-028: 문장을 둘째 역할로 놓고 해당 관계 카드의 첫 역할 문장과 연결한다(구조 유형의 고정 관계 방향).
+    function attachTo(anchorId,{sentenceId,nodeId}) {
+      if(!usable()||(!sentenceId&&!nodeId))return;
+      if(nodeId===anchorId){message('같은 문장끼리는 연결할 수 없습니다.');return;}
+      if(act({type:'place',...(sentenceId?{sentenceId}:{nodeId}),role:'support'})===false)return;
+      const g=graph(),node=nodeId?g.nodes.find(n=>n.id===nodeId):g.nodes.find(n=>n.sentenceId===sentenceId),rule=contract.relations[g.structureType];
+      if(!node||!rule){render();return;}
+      const from=rule.from==='support'?node.id:anchorId,to=rule.from==='support'?anchorId:node.id;
+      if(act({type:'connect',from,to,relationType:rule.type})===false){render();return;}
+      message(types[g.structureType].direction+'으로 연결했습니다.');render('pair-place:'+anchorId);
+    }
     function shift(node,delta) {
       const g=graph(),peers=g.nodes.filter(n=>n.role===node.role),index=peers.findIndex(n=>n.id===node.id),other=peers[index+delta];
       if(!other)return;
@@ -184,33 +196,60 @@ var GuidedBoard = (() => {
       if(pending&&!g.nodes.some(n=>n.id===pending.id&&n.role))pending=null;
       for(const key of attachments.keys())if(!g.edges.some(e=>edgeKey(e)===key))attachments.delete(key);
       const sorted=g.nodes.slice().sort((a,b)=>a.order-b.order),indices=new Map(sorted.map((n,i)=>[n.id,i+1]));
+      const grouped=RelationPairs.group(g),loose=new Set(grouped.loose.map(n=>n.id));
       for(const [role,zone] of zones) {
-        zone.heading.textContent=role==='unplaced'?'배치할 문장':names[role];
+        zone.heading.textContent=role==='unplaced'?'배치할 문장':role==='primary'?'관계 카드 · '+names.primary+' 기준':'아직 짝이 없는 '+names.support;
         zone.zone.setAttribute('aria-label',zone.heading.textContent+' 문장 영역');
         zone.place.textContent=names[role]+'에 놓기';zone.place.disabled=!current.selectedSentence;
         if(role!=='unplaced')focusTargets.set('place:'+role,zone.place);
-        zone.list.textContent='';const items=sorted.filter(n=>(n.role||'unplaced')===role);
+        zone.list.textContent='';const items=sorted.filter(n=>(n.role||'unplaced')===role&&(role!=='support'||loose.has(n.id)));
         zone.zone.hidden=role==='unplaced'&&!items.length;
-        if(!items.length&&role!=='unplaced'){const empty=el('li','선택한 문장을 놓거나 끌어오세요.');empty.className='guided-empty';zone.list.append(empty);}
-        items.forEach((node,index)=>{
+        if(role==='primary')zone.place.textContent='＋ 새 관계: '+names.primary+'으로 놓기';
+        if(!items.length&&role==='support'){const empty=el('li',grouped.pairs.some(p=>p.partners.length)?'모든 '+names.support+'이 관계 카드에 연결되어 있습니다.':'선택한 문장을 놓거나 끌어오세요.');empty.className='guided-empty';zone.list.append(empty);}
+        else if(!items.length&&role!=='unplaced'){const empty=el('li','선택한 문장을 놓거나 끌어오세요.');empty.className='guided-empty';zone.list.append(empty);}
+        const block=(node,role,index,peers,repeat)=>{
           const card=el('li');card.className='guided-block';card.setAttribute('data-node',node.id);card.draggable=false;
-          card.setAttribute('data-role',role);blocks.set(node.id,card);
+          card.setAttribute('data-role',role);
           const origin=el('p','문장 '+indices.get(node.id)+' · '+(node.source==='ai_candidate'?'AI 후보에서 선택':'원문에서 직접 추가'));origin.className='guided-block-origin';
           const text=el('p',node.text),actions=el('div');actions.className='guided-block-actions';card.append(origin,text,actions);
+          if(repeat){
+            // TASK-028: 여러 관계에 연결된 문장은 처음 나온 카드에만 조작 버튼·연결점을 둔다.
+            card.setAttribute('data-repeat','true');origin.textContent+=' · 같은 문장(위 관계에도 연결됨)';
+            actions.append(button('이 관계에서 연결 빼기',()=>perform({type:'disconnect',from:repeat.from,to:repeat.to},'place:primary')));
+            return card;
+          }
+          blocks.set(node.id,card);
           const handle=button('↕ 이동',()=>message('이동 손잡이를 끌거나 위로·아래로 버튼을 사용하세요.'),'drag:'+node.id);
           handle.className='guided-drag-handle';handle.draggable=true;handle.setAttribute('aria-label','문장 '+indices.get(node.id)+' 블록 이동 손잡이');
           handle.addEventListener('dragstart',event=>{if(act({type:'touch'})===false){event.preventDefault();return;}event.dataTransfer.setData('text/plain','reading-node:'+node.id);});actions.append(handle);
           if(role!=='unplaced') {
             const up=button('위로',()=>shift(node,-1),'up:'+node.id),down=button('아래로',()=>shift(node,1),'down:'+node.id);
-            up.disabled=index===0;down.disabled=index===items.length-1;actions.append(up,down);
+            up.disabled=index===0;down.disabled=index===peers-1;actions.append(up,down);
             const other=role==='primary'?'support':'primary';
             actions.append(button(names[other]+' 자리로 이동',()=>perform({type:'place',nodeId:node.id,role:other}),'role:'+node.id));
             for(const side of sides)card.append(makePort(node,side));
           } else for(const other of ['primary','support'])actions.append(button(names[other]+'에 놓기',()=>perform({type:'place',nodeId:node.id,role:other})));
           actions.append(button('빼기',()=>perform({type:'exclude',nodeId:node.id},'place:primary'),'remove:'+node.id));
           if(role!=='unplaced'){card.addEventListener('dragover',event=>event.preventDefault());card.addEventListener('drop',event=>drop(event,role,node.id));}
-          zone.list.append(card);
-        });
+          return card;
+        };
+        if(role==='primary') {
+          // TASK-028: 첫 역할 문장마다 관계 카드를 만들고, 연결된 둘째 역할 문장을 그 아래에 묶는다.
+          const supports=sorted.filter(n=>n.role==='support');
+          grouped.pairs.forEach((pair,index)=>{
+            const box=el('li');box.className='guided-pair';box.setAttribute('data-pair',pair.anchor.id);
+            const head=el('p','관계 '+(index+1)+' · '+names.primary+' – '+names.support);head.className='guided-pair-title';
+            const inner=el('ol');inner.className='guided-block-list';inner.append(block(pair.anchor,'primary',index,items.length,null));
+            const partners=el('ol');partners.className='guided-block-list guided-pair-partners';partners.setAttribute('aria-label','관계 '+(index+1)+'에 연결된 '+names.support);
+            for(const p of pair.partners)partners.append(block(p.node,'support',supports.findIndex(n=>n.id===p.node.id),supports.length,p.repeat?p.edge:null));
+            if(!pair.partners.length){const empty=el('li','아직 연결된 '+names.support+'이 없습니다.');empty.className='guided-empty';partners.append(empty);}
+            const attach=button('선택한 문장을 이 관계의 '+names.support+'으로 놓기',()=>attachTo(pair.anchor.id,{sentenceId:current.selectedSentence}),'pair-place:'+pair.anchor.id);
+            attach.className='guided-pair-place';attach.disabled=!current.selectedSentence;
+            box.addEventListener('dragover',event=>{if(active)event.preventDefault();});
+            box.addEventListener('drop',event=>{event.preventDefault();event.stopPropagation();const v=event.dataTransfer?.getData('text/plain')||'',sm=v.match(/^reading-sentence:(s\d{4})$/),nm=v.match(/^reading-node:(n\d{1,4})$/);if(sm||nm)attachTo(pair.anchor.id,sm?{sentenceId:sm[1]}:{nodeId:nm[1]});});
+            box.append(head,inner,partners,attach);zone.list.append(box);
+          });
+        } else items.forEach((node,index)=>zone.list.append(block(node,role,index,items.length,null)));
       }
       links.textContent='';
       for(const [index,edge] of g.edges.entries()) {

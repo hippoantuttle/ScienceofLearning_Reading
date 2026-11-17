@@ -9,14 +9,10 @@ let blindPort = null;
 let pdfWorksheet = null; // TASK-019 v3: PDF 세션의 단위별 중심 생각·단계. 패널 메모리에만 둔다.
 let rechecked = false;
 let operationBusy = false;
-let allowLocalRepeatedRecommendations = false;
-// @development-start
-allowLocalRepeatedRecommendations = (() => {
-  try { return SubmissionConfig.allowRepeatedRecommendations === true && AIContract.isLoopbackEndpoint(SubmissionConfig.aiEndpoint); }
-  catch { return false; }
-})();
-// @development-end
-const recommendationGate = AIContract.createGate({allowRepeatedRequests:allowLocalRepeatedRecommendations});
+// TASK-027 F(2026-11-17 사용자 승인): 읽기 전 용어·배경 추천은 읽기 시작 전까지 여러 번 받을 수 있다.
+// 읽기 시작 후 차단·지연 응답 폐기는 게이트가 계속 담당한다.
+const repeatPreReadingRecommendations = true;
+const recommendationGate = AIContract.createGate({allowRepeatedRequests:repeatPreReadingRecommendations});
 
 function showStatus(message, isError = false, target = statusElement) {
   target = target || statusElement;
@@ -29,6 +25,7 @@ function clearWorksheetErrors() {
     document.getElementById(id)?.removeAttribute?.('aria-invalid');
     const error = document.getElementById(id+'-error'); if (error) error.textContent='';
   }
+  if (typeof pairClearErrors === 'function') pairClearErrors();
   document.getElementById('form-error').textContent='';
 }
 
@@ -80,8 +77,13 @@ function resetPdfMode() {
   const status = document.getElementById('pdf-nav-status'); if (status) status.textContent = '';
 }
 function savePdfCurrent() { if (pdfWorksheet?.phase() === 'units') pdfWorksheet.setMain(document.getElementById('main-idea').value); }
+// TASK-028: 관계 카드가 여러 개면 기존 문자열 3개로 합친 값.
+function pairFieldValues() {
+  if (typeof pairPacked === 'function') return pairPacked();
+  const v = id => document.getElementById(id).value; return {primary:v('primary'), support:v('support'), relation:v('relation')};
+}
 function pdfStructureValues() {
-  return {structure:document.getElementById('structure').value, primary:document.getElementById('primary').value, support:document.getElementById('support').value, relation:document.getElementById('relation').value};
+  return {structure:document.getElementById('structure').value, ...pairFieldValues()};
 }
 function sendPdfUnitStatus() {
   if (!pdfWorksheet || articleSession?.kind !== 'pdf') return;
@@ -118,7 +120,7 @@ async function gotoPdfUnit(next) {
 function worksheetSubmissionValues() {
   if (articleSession?.kind === 'pdf' && pdfWorksheet) return pdfWorksheet.serialize(pdfStructureValues());
   const v = id => document.getElementById(id).value;
-  const values={structureType:v('structure'), mainIdea:v('main-idea'), primary:v('primary'), support:v('support'), relation:v('relation')};
+  const values={structureType:v('structure'), mainIdea:v('main-idea'), ...pairFieldValues()};
   return typeof guidedSupportValues==='function'?guidedSupportValues(values):values;
 }
 document.getElementById('open-pdf-viewer')?.addEventListener('click', async () => {
@@ -182,9 +184,11 @@ chrome.runtime?.onMessage?.addListener?.((message, sender, sendResponse) => {
 });
 
 analyzeButton.addEventListener('click', () => connectCurrentTab());
-async function connectCurrentTab({skipConfirm = false} = {}) {
+async function connectCurrentTab({skipConfirm = false, resume = false} = {}) {
   if (operationBusy || analyzeButton.disabled) return;
   if (articleSession && !skipConfirm && !confirm('훈련 종료 후 작성 내용을 지우고 새 시도를 시작할까요? 같은 글도 새 시도이며 이전 인출 수행과 구분됩니다.')) return;
+  // TASK-027 C: 새 시도는 이전 임시저장을 지운다. 임시저장 이어가기(resume)는 연결 뒤 저장 내용을 다시 채운다.
+  if (!resume && typeof draftBeforeNewTraining === 'function' && !draftBeforeNewTraining()) return;
   analyzeButton.disabled=true;
   if (articleSession && !await restoreBlind(document.getElementById('connect-status'))) {analyzeButton.disabled=false;return;}
   if (typeof resetRecordsPanel === 'function') resetRecordsPanel();
@@ -205,7 +209,7 @@ async function connectCurrentTab({skipConfirm = false} = {}) {
   if (articleSession) document.getElementById('prior').value = '';
   const articleConsent=document.getElementById('submission-article-consent');if(articleConsent)articleConsent.checked=false;
   for(const id of ['submission-article-title','submission-source-url']){const el=document.getElementById(id);if(el)el.value='';}
-  document.getElementById('worksheet').reset();
+  document.getElementById('worksheet').reset();if(typeof pairReset==='function')pairReset();
   clearWorksheetErrors();
   resetPdfMode();
   document.getElementById('reading').hidden = true;
@@ -330,6 +334,14 @@ document.getElementById('start-reading').addEventListener('click', async () => {
     const current = await chrome.tabs.get(articleSession.tabId);
     const [active] = await chrome.tabs.query({ active: true, windowId: articleSession.windowId });
     if (current.url !== articleSession.url || active?.id !== articleSession.tabId) throw new Error('연결한 글이 변경되었거나 다른 탭이 열려 있습니다. 원래 글로 돌아가거나 새 글을 연결하세요.');
+    await enterReadingView();
+    showStatus('읽기·구조화 중입니다. 직접 작성한 뒤 다시 말하기로 이동하세요.');
+    const status=document.getElementById('reading-start-status');if(status)status.textContent='';
+  } catch (error) { showStatus(error.message || '연결한 글을 다시 확인하세요.', true, document.getElementById('reading-start-status')); }
+  finally{operationBusy=false;}
+});
+// 읽기 시작: 읽기 전 AI를 닫고 읽기 화면을 연다. TASK-027 C: 임시저장 이어가기는 초급 후보를 새로 요청하지 않고 저장 상태로 복원한다.
+async function enterReadingView({guidedDraft} = {}) {
     recommendationGate.startReading();
     if (typeof localPreviewStartReading === 'function') localPreviewStartReading();
     if (typeof pilotAiStartReading === 'function') pilotAiStartReading();
@@ -342,13 +354,10 @@ document.getElementById('start-reading').addEventListener('click', async () => {
     // @development-end
     document.getElementById('preparation').hidden = true;
     document.getElementById('reading').hidden = false;
-    if(typeof guidedStarted==='function')guidedStarted();
-    if(typeof guidedSession!=='undefined'&&guidedSession?.mode==='guided')document.getElementById('structure').focus();else document.getElementById('main-idea').focus();
-    showStatus('읽기·구조화 중입니다. 직접 작성한 뒤 다시 말하기로 이동하세요.');
-    const status=document.getElementById('reading-start-status');if(status)status.textContent='';
-  } catch (error) { showStatus(error.message || '연결한 글을 다시 확인하세요.', true, document.getElementById('reading-start-status')); }
-  finally{operationBusy=false;}
-});
+    if (guidedDraft && typeof guidedResume === 'function') await guidedResume(guidedDraft);
+    else if(typeof guidedStarted==='function')guidedStarted();
+    if(typeof guidedSession!=='undefined'&&guidedSession?.mode==='guided'&&document.getElementById('main-idea').disabled)document.getElementById('structure').focus();else document.getElementById('main-idea').focus();
+}
 document.getElementById('worksheet').addEventListener('submit', enterRetell);
 updateStructureLabels();
 
@@ -377,9 +386,10 @@ function valuesForWorksheet() {
   if (pdfWorksheet) { let main = ''; try { main = pdfWorksheet.mainIdea(); } catch { main = ''; } return {main, primary:document.getElementById('primary').value, support:document.getElementById('support').value, relation:document.getElementById('relation').value}; }
   return {main:document.getElementById('main-idea').value, primary:document.getElementById('primary').value, support:document.getElementById('support').value, relation:document.getElementById('relation').value};
 }
-async function enterRetell(event) {
+async function enterRetell(event, {fromReview = false} = {}) {
   event?.preventDefault?.();
   if (operationBusy) return;
+  const errorTarget = document.getElementById(fromReview ? 'submission-status' : 'form-error');
   clearWorksheetErrors();
   if (pdfWorksheet) {
     savePdfCurrent();
@@ -398,6 +408,10 @@ async function enterRetell(event) {
     showStatus('중심 생각과 구조도의 필수 정보를 작성하세요. 추가 연결 설명은 선택입니다.',true,document.getElementById('form-error'));
     document.getElementById(ids[validation.missing[0]]).focus();return;
   }
+  if (typeof pairValidate === 'function' && !pairValidate()) {
+    showStatus('추가한 관계의 빈칸을 작성하거나 관계를 삭제하세요.',true,document.getElementById('form-error'));
+    document.querySelector?.('[aria-invalid="true"]')?.focus?.();return;
+  }
   operationBusy = true;
   try {
     await validateBoundTab();
@@ -415,14 +429,45 @@ async function enterRetell(event) {
     const result = await articleMessage(articleSession,{action:'TOGGLE_BLUR',enabled:true,token:articleSession.token});
     if (result?.status !== 'success' || result.enabled !== true) throw new Error(result?.message || '원문을 가리지 못했습니다.');
     await validateBoundTab();
+    // TASK-027: 정리 화면에서는 원문이 이미 복원되어 보였으므로 이후 다시 말하기는 재확인 수행이다.
+    if (fromReview) rechecked = true;
     document.getElementById('reading').hidden = true;
+    document.getElementById('review-view').hidden = true;
     document.getElementById('retell-view').hidden = false;
     document.getElementById('revisit-note').textContent = rechecked ? '이전에 원문을 다시 확인했습니다.' : '';
     document.getElementById('retell-input').focus();
     showStatus('원문을 가렸습니다. 기억나는 내용을 자신의 말로 작성하세요.');
-  } catch (error) { if(typeof guidedRevisit==='function')guidedRevisit();const restored=await restoreBlind(document.getElementById('form-error')); if(restored)showStatus(error.message || '원문 가림을 확인하지 못했습니다.',true,document.getElementById('form-error')); }
+  } catch (error) { if(typeof guidedRevisit==='function')guidedRevisit();const restored=await restoreBlind(errorTarget); if(restored)showStatus(error.message || '원문 가림을 확인하지 못했습니다.',true,errorTarget); }
   finally { operationBusy = false; }
 }
+// TASK-027: 저장 전 정리 화면에서만 이전 단계로 돌아가 고친다. 저장 중·저장 후·재시도 대기 중에는 최초 저장본을 바꾸지 않도록 막는다.
+function reviewBackAllowed() {
+  if (operationBusy || !articleSession || document.getElementById('review-view').hidden) return false;
+  if (document.getElementById('training-context')?.dataset?.saved === 'true') return false;
+  if (document.getElementById('submission-send')?.disabled) return false;
+  if (typeof panelSubmissionPending === 'function' && panelSubmissionPending()) {
+    showStatus('저장 요청이 끝나지 않았습니다. 「동의하고 저장」으로 먼저 다시 시도하세요.', true, document.getElementById('submission-status'));
+    return false;
+  }
+  return true;
+}
+document.getElementById('review-to-retell')?.addEventListener('click', async () => {
+  if (!reviewBackAllowed()) return;
+  await enterRetell(null, {fromReview:true});
+  if (!document.getElementById('retell-view').hidden) {
+    document.getElementById('revisit-note').textContent = '정리 화면에서 원문을 다시 본 뒤 고치는 다시 말하기입니다. 재확인으로 기록됩니다.';
+    showStatus('원문을 다시 가렸습니다. 다시 말하기를 고친 뒤 정리·저장으로 이동하세요.');
+  }
+});
+document.getElementById('review-to-reading')?.addEventListener('click', () => {
+  if (!reviewBackAllowed()) return;
+  if (typeof guidedRevisit === 'function') guidedRevisit();
+  rechecked = true;
+  document.getElementById('review-view').hidden = true; document.getElementById('reading').hidden = false;
+  const guidedStructuring = typeof guidedSession !== 'undefined' && guidedSession?.mode === 'guided' && document.getElementById('main-idea')?.disabled;
+  document.getElementById(guidedStructuring ? 'structure' : 'main-idea').focus();
+  showStatus('읽기·구조화로 돌아왔습니다. 작성 내용은 그대로이며, 이후 다시 말하기는 재확인 수행으로 기록됩니다.');
+});
 // Prevent the submit button's default event from starting a second transition.
 document.getElementById('to-retell').addEventListener('click',enterRetell);
 document.getElementById('back-to-reading').addEventListener('click',async () => {
@@ -441,25 +486,37 @@ document.getElementById('to-review').addEventListener('click',async () => {
   if (!retell.trim()) { showStatus('다시 말하기를 작성하세요.',true,retellError);document.getElementById('retell-input').setAttribute?.('aria-invalid','true'); document.getElementById('retell-input').focus(); return; }
   operationBusy=true;
   try{if (!await restoreBlind()) return;}finally{operationBusy=false;}
+  showReview();
+});
+// 정리 화면 요약을 채우고 연다. TASK-027 C: 임시저장 이어가기도 같은 경로를 쓴다. 실패하면 false.
+function showReview() {
+  const retell = document.getElementById('retell-input').value, retellError = document.getElementById('retell-error');
   let values = valuesForWorksheet(), typeText = document.getElementById('structure').selectedOptions[0].textContent;
   if (pdfWorksheet) {
     try { const packed = worksheetSubmissionValues(); values = {main:packed.mainIdea, primary:packed.primary, support:packed.support, relation:packed.relation}; typeText = '문서 전체 · ' + typeText; }
-    catch (error) { showStatus(error.message, true, retellError); return; }
-  }
-  if(typeof appendSupportView==='function'){try{const packed=worksheetSubmissionValues();const view=document.getElementById('summary-graph');if(view){view.textContent='';appendSupportView(view,packed.learningSupport);}}catch(error){showStatus(error.message,true,retellError);return;}}
+    catch (error) { showStatus(error.message, true, retellError); return false; }
+  } else Object.assign(values, pairFieldValues());
+  if(typeof appendSupportView==='function'){try{const packed=worksheetSubmissionValues();const view=document.getElementById('summary-graph');if(view){view.textContent='';appendSupportView(view,packed.learningSupport);}}catch(error){showStatus(error.message,true,retellError);return false;}}
   for (const [id,value] of Object.entries({'summary-main':values.main,'summary-primary':values.primary,'summary-support':values.support,'summary-relation':values.relation.trim() ? values.relation : '작성하지 않음 (선택)','summary-retell':retell,'summary-type':typeText})) document.getElementById(id).textContent = value;
-  document.getElementById('retell-view').hidden = true; document.getElementById('review-view').hidden = false; document.getElementById('step4')?.focus();
+  if (typeof appendPairsView === 'function' && RelationPairs.unpack(values).length > 1) {
+    // TASK-028: 관계가 여러 개면 관계별 보기로 보여 주고, 같은 내용을 필드별로 반복하지 않는다.
+    appendPairsView(document.getElementById('summary-graph'), values);
+    for (const id of ['summary-primary', 'summary-support', 'summary-relation']) document.getElementById(id).textContent = '위 관계별 보기 참고';
+  }
+  document.getElementById('retell-view').hidden = true; document.getElementById('reading').hidden = true; document.getElementById('review-view').hidden = false; document.getElementById('step4')?.focus();
   showStatus('원문을 다시 표시했습니다. 답안을 확인하고 저장하세요.');
-});
+  return true;
+}
 document.getElementById('end-training').addEventListener('click',async () => {
   if(operationBusy || !confirm('훈련을 종료하고 미저장 내용을 삭제할까요?'))return;operationBusy=true;
   try{if (!await restoreBlind()) return;}finally{operationBusy=false;}
   if(typeof resetGuided==='function')resetGuided();
+  if(typeof draftDiscard==='function')draftDiscard();
   articleSession=null;rechecked=false;recommendationGate.reset();resetPdfMode();
   if(typeof resetPanelSubmission==='function')resetPanelSubmission();
   if(typeof resetPilotAi==='function')resetPilotAi();
   if(typeof localPreviewReset==='function')localPreviewReset();
-  document.getElementById('worksheet').reset();clearWorksheetErrors();
+  document.getElementById('worksheet').reset();if(typeof pairReset==='function')pairReset();clearWorksheetErrors();
   for(const id of ['prior','main-idea','primary','support','relation','retell-input','reflection','new-words','interests','submission-article-title','submission-source-url','mock-token']){const el=document.getElementById(id);if(el)el.value='';}
   for(const id of ['submission-consent','submission-article-consent']){const el=document.getElementById(id);if(el)el.checked=false;}
   for(const id of ['retell-error','retell-status','revisit-note','connect-status','reading-start-status','fallback','mock-status','mock-result','summary-main','summary-type','summary-primary','summary-support','summary-relation','summary-retell']){const el=document.getElementById(id);if(el)el.textContent='';}

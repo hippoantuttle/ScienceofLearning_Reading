@@ -383,3 +383,24 @@ body[data-step-dir="back"] :is(#preparation, #reading, #retell-view, #review-vie
 /* TASK-027 C: resume offer for an unsaved training kept in session storage. */
 .draft-resume h2 { font-size: 1rem; margin: 0 0 var(--spacing-1); }
 .draft-resume p { margin-block: var(--spacing-1); }
+
+/* TASK-028: 관계 카드 — 중급 관계 2~5 입력, 초급 관계쌍 묶음, 정리·기록 화면의 관계별 보기 */
+#manual-map[hidden] ~ #pair-extra-block { display: none; }
+.pair-title { margin: 0 0 var(--spacing-2); font-size: var(--text-label-size); color: var(--accent); }
+.pair-extra { display: grid; gap: var(--spacing-4); margin-block: var(--spacing-4); }
+.pair-card { display: grid; gap: var(--spacing-1); padding: var(--spacing-3); border: var(--border-thin) solid var(--color-border-emphasized); border-radius: var(--radius-element); background: var(--color-background-muted); }
+.pair-card[hidden] { display: none; }
+.pair-head { display: flex; align-items: center; justify-content: space-between; gap: var(--spacing-2); }
+.pair-head h4 { margin: 0; font-size: var(--text-label-size); color: var(--accent); }
+.pair-head .pair-remove { font-size: var(--text-small-size); padding: var(--spacing-2); }
+#pair-add { justify-self: start; }
+.pair-view { list-style: none; padding: 0; margin-block: var(--spacing-3); display: grid; gap: var(--spacing-3); }
+.pair-view > li { padding: var(--spacing-3); border: var(--border-thin) solid var(--border); border-radius: var(--radius-element); }
+.pair-view h4 { margin: 0 0 var(--spacing-1); font-size: var(--text-label-size); color: var(--accent); }
+.pair-view p { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+#guided-nodes .guided-pair { position: relative; display: grid; gap: var(--spacing-4); padding: var(--spacing-4); border: var(--border-thin) solid var(--accent); border-radius: var(--radius-element); background: var(--surface); }
+#guided-nodes .guided-pair + .guided-pair { margin-top: var(--spacing-4); }
+.guided-pair-title { margin: 0; font-size: var(--text-small-size); font-weight: 600; color: var(--accent); }
+#guided-nodes .guided-pair-partners { padding-left: var(--spacing-6); border-left: var(--border-thin) dashed var(--accent); }
+#guided-nodes .guided-block[data-repeat="true"] { opacity: .85; border-style: dashed; }
+#guided-work .guided-pair-place { justify-self: start; font-size: var(--text-small-size); }

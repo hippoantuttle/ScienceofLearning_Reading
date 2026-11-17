@@ -688,3 +688,49 @@ test('TASK-027 C: 본문이 바뀌면 이어가지 않고 임시저장을 남기
   const t4=await guidedMainIdeaPanel();await vm.runInContext('draftFlush()',t4.context);assert.ok(t4.storageData[draftKey]);
   t4.elements['training-context'].dataset={saved:'true'};await vm.runInContext('draftFlush()',t4.context);assert.equal(t4.storageData[draftKey],undefined,'저장 완료 뒤에는 임시저장 삭제');
 });
+
+test('TASK-028 중급: 관계 카드 추가·빈칸 검사·삭제, 합친 값으로 정리·저장 값 구성, 임시저장 포함',async()=>{
+  const t=panelFixture(assemble({reviewOnly:true}).files),e=t.elements;
+  await e.analyze.handlers.click();await e['start-reading'].handlers.click();
+  e['main-idea'].value='합성 중심';e.primary.value='합성 주장 하나';e.support.value='합성 근거 하나';
+  assert.equal(e.pair2.hidden,true);assert.equal(e['pair1-title'].hidden,true);
+  await e['pair-add'].handlers.click();assert.equal(e.pair2.hidden,false);assert.equal(e['pair1-title'].hidden,false);
+  await e['pair-add'].handlers.click();e['pair3-primary'].value='지울 주장';
+  await e['pair3-remove'].handlers.click();assert.equal(e.pair3.hidden,true);assert.equal(e['pair3-primary'].value,'');
+  e['pair2-primary'].value='합성 주장 둘';
+  await e.worksheet.handlers.submit({preventDefault(){}});
+  assert.equal(t.calls.blur,0,'추가 관계의 빈칸이 있으면 원문을 가리지 않는다');
+  assert.equal(e['pair2-support'].attrs['aria-invalid'],'true');assert.match(e['pair2-support-error'].textContent,/관계 2/);
+  e['pair2-support'].value='합성 근거 둘';e['pair2-relation'].value='합성 이유 둘';
+  const packed=JSON.parse(vm.runInContext('JSON.stringify(worksheetSubmissionValues())',t.context));
+  assert.equal(packed.primary,'[관계 1]\n합성 주장 하나\n\n[관계 2]\n합성 주장 둘');
+  assert.equal(packed.relation,'[관계 1]\n\n\n[관계 2]\n합성 이유 둘');
+  const draft=await vm.runInContext('draftCollect()',t.context);
+  assert.equal(draft.fields['pair2-support'],'합성 근거 둘');assert.ok(vm.runInContext('TrainingDraft',t.context).validate(draft));
+  await e.worksheet.handlers.submit({preventDefault(){}});assert.equal(t.calls.blur,1);
+  e['retell-input'].value='합성 다시 말하기';await e['to-review'].handlers.click();
+  assert.equal(e['review-view'].hidden,false);
+  const view=e['summary-graph'].children.find(c=>c.className==='pair-view');
+  assert.ok(view,'정리 화면에 관계별 보기');assert.equal(view.children.length,2);assert.match(view.children[1].textContent,/합성 주장 둘.*합성 근거 둘.*합성 이유 둘/s);
+  assert.equal(e['summary-primary'].textContent,'위 관계별 보기 참고','같은 내용을 필드별로 반복하지 않는다');
+  vm.runInContext('pairReset()',t.context);assert.equal(e.pair2.hidden,true);assert.equal(e['pair2-primary'].value,'');
+  e['pair3-support'].value='복원된 근거';vm.runInContext('pairShowFilled()',t.context);
+  assert.equal(e.pair2.hidden,false);assert.equal(e.pair3.hidden,false);assert.equal(e.pair4.hidden,true,'값이 있는 마지막 카드까지 복원');
+});
+
+test('TASK-028 초급: 주장 기준 관계 카드에 연결된 근거가 묶이고, 카드에 바로 근거를 놓으면 연결까지 된다(저장 형식 동일)',async()=>{
+  const t=await startBlockReview(),e=t.elements;
+  const zone=role=>{const walk=node=>node.attrs?.['data-board-role']===role?node:node.children?.map(walk).find(Boolean);return walk(e['guided-nodes']);};
+  const pair=id=>{const walk=node=>node.attrs?.['data-pair']===id?node:node.children?.map(walk).find(Boolean);return walk(e['guided-nodes']);};
+  assert.ok(pair('n1'),'주장 블록마다 관계 카드');assert.match(zone('support').textContent,/주민들이 주말 운영을 요청했다/,'연결 전 근거는 짝 없는 영역');
+  await findBoardElement(t,'port:n2:top').handlers.click();await findBoardElement(t,'port:n1:bottom').handlers.click();
+  assert.match(pair('n1').textContent,/주민들이 주말 운영을 요청했다/);assert.doesNotMatch(zone('support').textContent,/주민들이/);
+  await e['guided-source-list'].children[2].children[1].handlers.click();
+  await findBoardElement(t,'pair-place:n1').handlers.click();
+  const g=JSON.parse(vm.runInContext('JSON.stringify(guidedSession.editor.validate())',t.context));
+  assert.deepEqual(g.edges,[{from:'n2',to:'n1',relationType:'supports'},{from:'n3',to:'n1',relationType:'supports'}]);
+  assert.match(pair('n1').textContent,/자원봉사자가/);
+  const fields=JSON.parse(vm.runInContext('JSON.stringify(guidedSession.editor.textFields())',t.context));
+  assert.equal(fields.support,'주민들이 주말 운영을 요청했다.\n자원봉사자가 운영을 돕는다.','저장 문자열 형식은 그대로');
+  assert.equal(t.calls.network,0);
+});

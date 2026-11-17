@@ -39,6 +39,7 @@
   <script src="submission-config.local.js" defer></script>
   <!-- @development-end -->
   <script src="sidepanel.js" defer></script>
+  <script src="relation-pairs.js" defer></script>
   <script src="support-view.js" defer></script>
   <script src="guided-board.js" defer></script>
   <script src="guided-panel.js" defer></script>
@@ -47,6 +48,7 @@
   <script src="feedback-panel.js" defer></script>
   <script src="records-panel.js" defer></script>
   <script src="account-bar.js" defer></script>
+  <script src="pair-panel.js" defer></script>
   <script src="draft-panel.js" defer></script>
   <script src="panel-shell.js" defer></script>
 </head>
@@ -212,6 +214,7 @@
         <button id="guided-back-structure" type="button" class="quiet" hidden>← 구조도 다시 고치기</button>
       </section>
       <div id="manual-map" class="structure-map" role="group" aria-label="직접 작성하는 구조도">
+        <h4 id="pair1-title" class="pair-title" hidden>관계 1</h4>
         <div class="structure-node"><label id="primary-label" for="primary">핵심 정보 · 주장</label><textarea id="primary" rows="3" required aria-describedby="primary-error"></textarea><p id="primary-error" class="field-error"></p></div>
         <div class="structure-link" aria-hidden="true">↕</div>
         <div class="structure-node"><label id="support-label" for="support">보조 정보 · 근거</label><textarea id="support" rows="3" required aria-describedby="support-error"></textarea><p id="support-error" class="field-error"></p></div>
@@ -223,6 +226,34 @@
         <p id="relation-source-help" class="hint">원문에 설명된 내용이 있을 때 작성하세요.</p>
         <label for="relation">왜 이렇게 연결했나요? (선택)</label><textarea id="relation" rows="3" aria-describedby="relation-help relation-type-help relation-source-help relation-error"></textarea><p id="relation-error" class="field-error"></p>
       </details>
+      <div id="pair-extra-block" class="pair-extra">
+        <section id="pair2" class="pair-card" aria-labelledby="pair2-title" hidden>
+          <div class="pair-head"><h4 id="pair2-title">관계 2</h4><button id="pair2-remove" type="button" class="quiet pair-remove">관계 2 삭제</button></div>
+          <label id="pair2-primary-label" for="pair2-primary">핵심 정보 · 주장</label><textarea id="pair2-primary" rows="2" aria-describedby="pair2-primary-error"></textarea><p id="pair2-primary-error" class="field-error"></p>
+          <label id="pair2-support-label" for="pair2-support">보조 정보 · 근거</label><textarea id="pair2-support" rows="2" aria-describedby="pair2-support-error"></textarea><p id="pair2-support-error" class="field-error"></p>
+          <label for="pair2-relation">왜 이렇게 연결했나요? (선택)</label><textarea id="pair2-relation" rows="2"></textarea>
+        </section>
+        <section id="pair3" class="pair-card" aria-labelledby="pair3-title" hidden>
+          <div class="pair-head"><h4 id="pair3-title">관계 3</h4><button id="pair3-remove" type="button" class="quiet pair-remove">관계 3 삭제</button></div>
+          <label id="pair3-primary-label" for="pair3-primary">핵심 정보 · 주장</label><textarea id="pair3-primary" rows="2" aria-describedby="pair3-primary-error"></textarea><p id="pair3-primary-error" class="field-error"></p>
+          <label id="pair3-support-label" for="pair3-support">보조 정보 · 근거</label><textarea id="pair3-support" rows="2" aria-describedby="pair3-support-error"></textarea><p id="pair3-support-error" class="field-error"></p>
+          <label for="pair3-relation">왜 이렇게 연결했나요? (선택)</label><textarea id="pair3-relation" rows="2"></textarea>
+        </section>
+        <section id="pair4" class="pair-card" aria-labelledby="pair4-title" hidden>
+          <div class="pair-head"><h4 id="pair4-title">관계 4</h4><button id="pair4-remove" type="button" class="quiet pair-remove">관계 4 삭제</button></div>
+          <label id="pair4-primary-label" for="pair4-primary">핵심 정보 · 주장</label><textarea id="pair4-primary" rows="2" aria-describedby="pair4-primary-error"></textarea><p id="pair4-primary-error" class="field-error"></p>
+          <label id="pair4-support-label" for="pair4-support">보조 정보 · 근거</label><textarea id="pair4-support" rows="2" aria-describedby="pair4-support-error"></textarea><p id="pair4-support-error" class="field-error"></p>
+          <label for="pair4-relation">왜 이렇게 연결했나요? (선택)</label><textarea id="pair4-relation" rows="2"></textarea>
+        </section>
+        <section id="pair5" class="pair-card" aria-labelledby="pair5-title" hidden>
+          <div class="pair-head"><h4 id="pair5-title">관계 5</h4><button id="pair5-remove" type="button" class="quiet pair-remove">관계 5 삭제</button></div>
+          <label id="pair5-primary-label" for="pair5-primary">핵심 정보 · 주장</label><textarea id="pair5-primary" rows="2" aria-describedby="pair5-primary-error"></textarea><p id="pair5-primary-error" class="field-error"></p>
+          <label id="pair5-support-label" for="pair5-support">보조 정보 · 근거</label><textarea id="pair5-support" rows="2" aria-describedby="pair5-support-error"></textarea><p id="pair5-support-error" class="field-error"></p>
+          <label for="pair5-relation">왜 이렇게 연결했나요? (선택)</label><textarea id="pair5-relation" rows="2"></textarea>
+        </section>
+        <button id="pair-add" type="button" class="quiet">＋ 관계 추가</button>
+        <p id="pair-status" class="hint" role="status" aria-live="polite">근거가 다른 주장을 뒷받침하면 관계를 추가해 따로 적으세요. 최대 5개.</p>
+      </div>
       </div>
       <div id="form-error" role="alert"></div>
       <div id="retell-submit-block" class="step-footer">

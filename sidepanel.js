@@ -25,6 +25,7 @@ function clearWorksheetErrors() {
     document.getElementById(id)?.removeAttribute?.('aria-invalid');
     const error = document.getElementById(id+'-error'); if (error) error.textContent='';
   }
+  if (typeof pairClearErrors === 'function') pairClearErrors();
   document.getElementById('form-error').textContent='';
 }
 
@@ -76,8 +77,13 @@ function resetPdfMode() {
   const status = document.getElementById('pdf-nav-status'); if (status) status.textContent = '';
 }
 function savePdfCurrent() { if (pdfWorksheet?.phase() === 'units') pdfWorksheet.setMain(document.getElementById('main-idea').value); }
+// TASK-028: 관계 카드가 여러 개면 기존 문자열 3개로 합친 값.
+function pairFieldValues() {
+  if (typeof pairPacked === 'function') return pairPacked();
+  const v = id => document.getElementById(id).value; return {primary:v('primary'), support:v('support'), relation:v('relation')};
+}
 function pdfStructureValues() {
-  return {structure:document.getElementById('structure').value, primary:document.getElementById('primary').value, support:document.getElementById('support').value, relation:document.getElementById('relation').value};
+  return {structure:document.getElementById('structure').value, ...pairFieldValues()};
 }
 function sendPdfUnitStatus() {
   if (!pdfWorksheet || articleSession?.kind !== 'pdf') return;
@@ -114,7 +120,7 @@ async function gotoPdfUnit(next) {
 function worksheetSubmissionValues() {
   if (articleSession?.kind === 'pdf' && pdfWorksheet) return pdfWorksheet.serialize(pdfStructureValues());
   const v = id => document.getElementById(id).value;
-  const values={structureType:v('structure'), mainIdea:v('main-idea'), primary:v('primary'), support:v('support'), relation:v('relation')};
+  const values={structureType:v('structure'), mainIdea:v('main-idea'), ...pairFieldValues()};
   return typeof guidedSupportValues==='function'?guidedSupportValues(values):values;
 }
 document.getElementById('open-pdf-viewer')?.addEventListener('click', async () => {
@@ -203,7 +209,7 @@ async function connectCurrentTab({skipConfirm = false, resume = false} = {}) {
   if (articleSession) document.getElementById('prior').value = '';
   const articleConsent=document.getElementById('submission-article-consent');if(articleConsent)articleConsent.checked=false;
   for(const id of ['submission-article-title','submission-source-url']){const el=document.getElementById(id);if(el)el.value='';}
-  document.getElementById('worksheet').reset();
+  document.getElementById('worksheet').reset();if(typeof pairReset==='function')pairReset();
   clearWorksheetErrors();
   resetPdfMode();
   document.getElementById('reading').hidden = true;
@@ -402,6 +408,10 @@ async function enterRetell(event, {fromReview = false} = {}) {
     showStatus('중심 생각과 구조도의 필수 정보를 작성하세요. 추가 연결 설명은 선택입니다.',true,document.getElementById('form-error'));
     document.getElementById(ids[validation.missing[0]]).focus();return;
   }
+  if (typeof pairValidate === 'function' && !pairValidate()) {
+    showStatus('추가한 관계의 빈칸을 작성하거나 관계를 삭제하세요.',true,document.getElementById('form-error'));
+    document.querySelector?.('[aria-invalid="true"]')?.focus?.();return;
+  }
   operationBusy = true;
   try {
     await validateBoundTab();
@@ -485,9 +495,14 @@ function showReview() {
   if (pdfWorksheet) {
     try { const packed = worksheetSubmissionValues(); values = {main:packed.mainIdea, primary:packed.primary, support:packed.support, relation:packed.relation}; typeText = '문서 전체 · ' + typeText; }
     catch (error) { showStatus(error.message, true, retellError); return false; }
-  }
+  } else Object.assign(values, pairFieldValues());
   if(typeof appendSupportView==='function'){try{const packed=worksheetSubmissionValues();const view=document.getElementById('summary-graph');if(view){view.textContent='';appendSupportView(view,packed.learningSupport);}}catch(error){showStatus(error.message,true,retellError);return false;}}
   for (const [id,value] of Object.entries({'summary-main':values.main,'summary-primary':values.primary,'summary-support':values.support,'summary-relation':values.relation.trim() ? values.relation : '작성하지 않음 (선택)','summary-retell':retell,'summary-type':typeText})) document.getElementById(id).textContent = value;
+  if (typeof appendPairsView === 'function' && RelationPairs.unpack(values).length > 1) {
+    // TASK-028: 관계가 여러 개면 관계별 보기로 보여 주고, 같은 내용을 필드별로 반복하지 않는다.
+    appendPairsView(document.getElementById('summary-graph'), values);
+    for (const id of ['summary-primary', 'summary-support', 'summary-relation']) document.getElementById(id).textContent = '위 관계별 보기 참고';
+  }
   document.getElementById('retell-view').hidden = true; document.getElementById('reading').hidden = true; document.getElementById('review-view').hidden = false; document.getElementById('step4')?.focus();
   showStatus('원문을 다시 표시했습니다. 답안을 확인하고 저장하세요.');
   return true;
@@ -501,7 +516,7 @@ document.getElementById('end-training').addEventListener('click',async () => {
   if(typeof resetPanelSubmission==='function')resetPanelSubmission();
   if(typeof resetPilotAi==='function')resetPilotAi();
   if(typeof localPreviewReset==='function')localPreviewReset();
-  document.getElementById('worksheet').reset();clearWorksheetErrors();
+  document.getElementById('worksheet').reset();if(typeof pairReset==='function')pairReset();clearWorksheetErrors();
   for(const id of ['prior','main-idea','primary','support','relation','retell-input','reflection','new-words','interests','submission-article-title','submission-source-url','mock-token']){const el=document.getElementById(id);if(el)el.value='';}
   for(const id of ['submission-consent','submission-article-consent']){const el=document.getElementById(id);if(el)el.checked=false;}
   for(const id of ['retell-error','retell-status','revisit-note','connect-status','reading-start-status','fallback','mock-status','mock-result','summary-main','summary-type','summary-primary','summary-support','summary-relation','summary-retell']){const el=document.getElementById(id);if(el)el.textContent='';}

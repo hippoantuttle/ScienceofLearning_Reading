@@ -46,6 +46,7 @@ function recordsCompare(){
   section.append(recordsText('h3',original.articleTitle||'글 정보 없음'));
   if(original.sourceUrl)section.append(recordsText('p',original.sourceUrl));
   if(typeof appendSupportView==='function')appendSupportView(section,original.learningSupport);
+  if(typeof appendPairsView==='function'&&!original.learningSupport?.graph)appendPairsView(section,original);
   section.append(recordsText('p','최초 저장: '+recordsDate(recordSelection.savedAt)));
   if(selected)section.append(recordsText('p','선택 수정본 저장: '+recordsDate(selected.savedAt)));
   const dl=document.createElement('dl');
@@ -94,7 +95,7 @@ recordsEl('records-open').addEventListener('click',async()=>{
   if(typeof resetPilotAi==='function')resetPilotAi();
   if(typeof localPreviewReset==='function')localPreviewReset();
   resetPanelSubmission();articleSession=null;
-  document.getElementById('worksheet').reset();
+  document.getElementById('worksheet').reset();if(typeof pairReset==='function')pairReset();
   for(const id of ['prior','retell-input','reflection','new-words','interests','submission-article-title','submission-source-url'])recordsEl(id).value='';
   recordsEl('submission-article-consent').checked=false;
   for(const id of ['preparation','reading','retell-view','review-view','feedback-section'])recordsEl(id).hidden=true;

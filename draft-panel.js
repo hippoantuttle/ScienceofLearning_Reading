@@ -108,6 +108,8 @@ async function draftApply(draft) {
   }
   if (draft.step === 'preparation') { showStatus('임시저장한 읽기 준비 내용을 불러왔습니다. 준비되면 「읽기·구조화 시작」을 누르세요.'); return; }
   for (const id of ['structure', 'primary', 'support', 'relation', 'retell-input', 'reflection', 'new-words', 'interests']) set(id);
+  for (const id of TrainingDraft.FIELDS) if (id.startsWith('pair')) set(id);
+  if (typeof pairShowFilled === 'function') pairShowFilled();
   if (typeof updateStructureLabels === 'function') updateStructureLabels();
   if (f.relation?.trim() && draftEl('relation-details')) draftEl('relation-details').open = true;
   if (pdfWorksheet && draft.pdf) {

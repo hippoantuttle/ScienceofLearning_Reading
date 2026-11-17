@@ -7,7 +7,9 @@ var TrainingDraft = (() => {
   const KEY = 'readingTrainingDraft';
   const VERSION = 1;
   const STEPS = ['preparation', 'reading', 'retell-view', 'review-view'];
-  const FIELDS = ['prior', 'reading-mode', 'main-idea', 'structure', 'primary', 'support', 'relation', 'retell-input', 'reflection', 'new-words', 'interests', 'submission-article-title', 'submission-source-url'];
+  const FIELDS = ['prior', 'reading-mode', 'main-idea', 'structure', 'primary', 'support', 'relation', 'retell-input', 'reflection', 'new-words', 'interests', 'submission-article-title', 'submission-source-url',
+    // TASK-028: 중급 관계 카드 2~5
+    ...[2, 3, 4, 5].flatMap(k => [`pair${k}-primary`, `pair${k}-support`, `pair${k}-relation`])];
   const CHECKS = ['submission-article-consent'];
   const MAX_BYTES = 400000;
   const isText = (value, max = 20000) => typeof value === 'string' && value.length <= max;

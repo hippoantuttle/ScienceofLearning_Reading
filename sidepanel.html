@@ -265,13 +265,14 @@
     <h2 id="feedback-heading">피드백과 직접 수정</h2>
     <details id="feedback-ai-card" class="ai-card" hidden>
       <summary>AI 피드백 받기 (선택)</summary>
-      <p class="ai-notice"><strong>AI 사용 안내</strong> · 요청하면 글 본문과 저장한 답안이 외부 AI 서비스로 전송됩니다. 피드백은 참고용이며 저장되지 않습니다.</p>
+      <p class="ai-notice"><strong>AI 사용 안내</strong> · 요청하면 글 본문과 최초로 저장한 답안이 외부 AI 서비스로 전송됩니다. 피드백은 참고용이며 저장되지 않습니다. 아래에서 수정 중인 답안은 이번 평가에 포함되지 않습니다.</p>
       <details class="disclosure"><summary>전송 내용 보기</summary>
         <p class="hint">AI 서비스의 데이터 보관 정책은 확인 중입니다. 민감한 정보가 없는 글에만 사용하세요.</p>
         <label for="feedback-article">전송할 글</label><textarea id="feedback-article" rows="5" readonly></textarea>
       </details>
       <button id="feedback-request" type="button" class="primary" disabled aria-describedby="feedback-status">글과 답안 보내고 피드백 받기</button>
       <p id="feedback-status" role="status" aria-live="polite"></p>
+      <details id="feedback-error-details" class="disclosure" hidden><summary>오류 정보</summary><p id="feedback-error-code"></p></details>
     </details>
     <div id="feedback-result" class="result" aria-live="polite"></div>
     <div id="feedback-support-context"></div>

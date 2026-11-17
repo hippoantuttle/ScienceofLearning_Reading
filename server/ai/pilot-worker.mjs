@@ -8,7 +8,7 @@ import { callProvider } from './worker.mjs';
 import Support from '../../learning-support.js';
 import CandidatesContract from '../../reading-support-contract.js';
 import {callCandidates} from './reading-candidates.mjs';
-import { callFeedback } from './feedback.mjs';
+import { callFeedback, feedbackDiagnostic } from './feedback.mjs';
 import {cohortSettings,cohortAccess} from '../pilot-access.mjs';
 
 const DEFAULT_USER_DAILY_LIMIT = 5;
@@ -98,6 +98,7 @@ export class PilotBudget {
 export function createPilotWorker({ fetchImpl = fetch, providerFetch = fetch } = {}) {
   return {
     async fetch(request, env) {
+      const startedAt=Date.now();
       const origin = request.headers.get('origin');
       const headers = { 'Cache-Control': 'no-store', Vary: 'Origin' };
       const reply = (status, body) => Response.json(body ?? { error: 'error' }, { status, headers });
@@ -141,7 +142,13 @@ export function createPilotWorker({ fetchImpl = fetch, providerFetch = fetch } =
       } else if (Object.keys(body).length !== 0) return reply(400, { error: 'invalid' });
 
       // 실패 단계를 구분하는 안전한 코드만 응답한다(토큰·키·내부 메시지는 응답에 넣지 않는다).
-      const fail = (stage, status, code) => { console.error('[pilot-ai]', stage); return reply(status, { error: code }); };
+      const fail = (stage, status, code, error) => {
+        if(!feedbackMode){console.error('[pilot-ai]',stage);return reply(status,{error:code});}
+        const diagnostic=stage==='provider'?feedbackDiagnostic(error):{code};
+        const requestId=crypto.randomUUID();
+        console.error({event:'pilot-ai-error',requestId,path:'/feedback',stage,status,attempt:1,elapsedMs:Math.max(0,Date.now()-startedAt),...diagnostic});
+        return reply(status,{error:code,code:diagnostic.code,requestId});
+      };
       // Workers 런타임은 redirect:'error'를 지원하지 않는다. 'manual'이면 3xx는 ok가 아니므로 실패로 처리된다.
       let userId;
       try {

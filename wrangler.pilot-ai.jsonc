@@ -5,6 +5,13 @@
   "main": "server/ai/pilot-worker.mjs",
   "compatibility_date": "2026-01-01",
   "workers_dev": true,
+  // AI 장애 조사용 내부 저장 로그. 본문·답안·인증값을 console에 기록하지 않는다.
+  "observability": {
+    "enabled": true,
+    "head_sampling_rate": 1,
+    "redact_query_string": true,
+    "logs": { "enabled": true, "head_sampling_rate": 1, "persist": true, "invocation_logs": true }
+  },
   "vars": {
     "SUPABASE_URL": "https://mxhlxenfboiaywyhgyqs.supabase.co",
     "ALLOWED_ORIGIN": "chrome-extension://jenapgoakhnmlmjcdnkfakkkgjobbfbb",

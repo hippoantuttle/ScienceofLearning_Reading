@@ -501,7 +501,8 @@ test('설치본은 AI 한도·장애 후에도 직접 제출·수정 저장을 �
     assert.match(e['submission-status'].textContent,/저장했습니다/);
     await e['feedback-request'].handlers.click();
     assert.equal(aiCalls,2);assert.equal(e['feedback-result'].textContent,'');
-    assert.match(e['feedback-status'].textContent,aiStatus===429?/한도/:/실패/);
+    assert.match(e['feedback-status'].textContent,aiStatus===429?/한도/:/피드백을 받지 못했습니다/);
+    assert.match(e['feedback-status'].textContent,/제출은 저장되어 있습니다/);
     e['feedback-main'].value='AI 없이 직접 고친 합성 답안';
     await e['revision-save'].handlers.click();
     assert.match(e['revision-status'].textContent,/저장 및 재조회 확인/);

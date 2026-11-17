@@ -93,6 +93,27 @@ test('피드백은 저장된 본인 답안만 공급자에게 보내고 제한�
  assert.equal(sent.max_tokens,2000);
 });
 
+test('피드백의 오류 번호·세부 분류 로그는 대응하며 본문·답안·제공자 메시지를 남기지 않는다',async()=>{
+ const quiet=console.error,logs=[];console.error=value=>logs.push(value);
+ try{
+  const row={structure_type:'claim',main_idea:'SYNTHETIC_PRIVATE_MAIN',primary_text:'합성',support_text:'합성',relation_text:'',retell:'SYNTHETIC_PRIVATE_RETELL'};
+  const body=JSON.stringify({article:'SYNTHETIC_PRIVATE_ARTICLE',sessionId:UID_A});
+  for(const [transport,code,extra] of [
+   [async()=>new Response('SYNTHETIC_PRIVATE_PROVIDER',{status:429}),'provider_http',{upstreamStatus:429}],
+   [async()=>Response.json({choices:[{finish_reason:'stop',message:{content:'   '}}]}),'provider_empty',{}],
+   [async()=>{const data=structuredClone(FEEDBACK_REPLY);data.strengths[0].quote='SYNTHETIC_PRIVATE_QUOTE';return Response.json({choices:[{finish_reason:'stop',message:{content:JSON.stringify(data)}}]});},'feedback_strength_quote',{}]
+  ]){
+   const t=setup({envOverride:{PILOT_FEEDBACK_ENABLED:'true'},rows:[row],providerFetch:transport});
+   const response=await t.call('tokA',{path:'/feedback',body}),data=await response.json(),log=logs.at(-1);
+   assert.equal(response.status,502);assert.equal(data.error,'provider');assert.equal(data.code,code);assert.match(data.requestId,/^[0-9a-f-]{36}$/);
+   assert.equal(log.requestId,data.requestId);assert.equal(log.code,code);assert.equal(log.event,'pilot-ai-error');assert.equal(log.attempt,1);assert.equal(log.path,'/feedback');assert.equal(log.status,502);assert.equal(log.stage,'provider');assert.ok(log.elapsedMs>=0);
+   for(const [k,v] of Object.entries(extra))assert.equal(log[k],v);
+   assert.deepEqual(Object.keys(log).sort(),['event','requestId','path','stage','status','attempt','elapsedMs','code',...Object.keys(extra)].sort());
+   assert.doesNotMatch(JSON.stringify([data,log]),/SYNTHETIC_PRIVATE|tokA|fake|stack|retell|article|Bearer|sb_publishable/);
+  }
+ }finally{console.error=quiet;}
+});
+
 test('실제 글 경로는 기본 비활성이고 비활성 시 인증·공급자를 호출하지 않는다', async () => {
   const { call, calls, counter } = setup();
   const response = await call('tokA', { path: '/recommend-article', body: JSON.stringify({article:'자체 작성 가상 글'}) });

@@ -10,6 +10,7 @@ function setup(){
     query:async()=>[tab],get:async()=>tab,onActivated:{addListener(fn){activate=fn;}},
     connect:()=>({onDisconnect:{addListener(){}},disconnect(){}}),
     sendMessage:async(_id,msg)=>{if(msg.action==='EXTRACT_ARTICLE')return {status:'success',text:'합성 글',token:'synthetic',charCount:4,wordCount:2};
+      if(msg.action==='PING_SESSION')return {status:'success',alive:msg.token==='synthetic'};
       if(msg.enabled){calls.blur++;return options.blur===false?{status:'error',message:'합성 가림 실패'}:{status:'success',enabled:true};}
       calls.restore++;return options.restore?{status:'success',enabled:false}:{status:'error'};
     }

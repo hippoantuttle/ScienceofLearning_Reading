@@ -369,15 +369,43 @@ async function validateBoundTab() {
   const [active] = await chrome.tabs.query({active:true, windowId:articleSession.windowId});
   if (current.url !== articleSession.url || active?.id !== articleSession.tabId) throw new Error('연결한 글이 변경되었거나 다른 탭이 열려 있습니다.');
 }
+// 작성 중 기사 탭이 새로고침되면(직접·사이트 자동 새로고침·메모리 절약 후 재로드) 연결 때 주입한 content.js와 토큰이 사라진다.
+// 같은 탭·같은 주소에서 다시 주입해 본문을 다시 읽고, 연결 때와 본문이 같을 때만 같은 세션으로 이어 간다. 웹 기사만 해당한다.
+function injectArticleScript(session) {
+  return chrome.scripting.executeScript({target:{tabId:session.tabId}, files:['content.js']});
+}
+async function ensureArticleContent() {
+  const session = articleSession;
+  if (!session || session.kind !== 'web') return;
+  let alive = false;
+  try { alive = (await articleMessage(session, {action:'PING_SESSION', token:session.token}))?.alive === true; } catch { alive = false; }
+  if (alive) return;
+  await injectArticleScript(session);
+  const response = await chrome.tabs.sendMessage(session.tabId, {action:'EXTRACT_ARTICLE'});
+  const current = await chrome.tabs.get(session.tabId);
+  if (articleSession !== session || current.url !== session.url) throw new Error('연결한 글이 변경되었습니다. 다시 연결하세요.');
+  if (response?.status !== 'success' || response.text !== session.text) throw new Error('페이지를 새로 불러온 뒤 본문이 연결할 때와 달라 이어갈 수 없습니다. 작성 내용은 그대로이니 원래 글을 확인하세요.');
+  session.token = response.token;
+}
 async function restoreBlind(target) {
   if(!target){
     const stage=!document.getElementById('retell-view').hidden?'retell-status':!document.getElementById('reading').hidden?'form-error':!document.getElementById('review-view').hidden?'submission-status':'connect-status';
     target=document.getElementById(stage);
   }
   if (!articleSession) return false;
-  try {
-    const response = await articleMessage(articleSession, {action:'TOGGLE_BLUR',enabled:false,token:articleSession.token});
+  const session = articleSession;
+  const unblind = async () => {
+    const response = await articleMessage(session, {action:'TOGGLE_BLUR',enabled:false,token:session.token});
     if (response?.status !== 'success' || response.enabled !== false) throw new Error();
+  };
+  try {
+    try { await unblind(); }
+    catch (error) {
+      // 웹 기사 탭이 새로고침되어 content.js가 없으면 가림도 함께 사라진 상태다. 다시 주입해 해제를 확인한다.
+      if (session.kind !== 'web') throw error;
+      await injectArticleScript(session);
+      await unblind();
+    }
     return true;
   } catch { showStatus(articleSession?.kind === 'pdf' ? '원문 복원 여부를 확인할 수 없습니다. PDF 뷰어 탭을 확인하세요.' : '원문 복원 여부를 확인할 수 없습니다. 기사 탭을 새로고침하세요.',true,target); return false; }
   finally { if (blindPort) { const port = blindPort; blindPort = null; port.disconnect(); } }
@@ -415,6 +443,7 @@ async function enterRetell(event, {fromReview = false} = {}) {
   operationBusy = true;
   try {
     await validateBoundTab();
+    await ensureArticleContent();
     if(typeof guidedBeforeRetell==='function')guidedBeforeRetell();
     blindPort = articlePort(articleSession);
     const connectedPort = blindPort;
@@ -422,9 +451,11 @@ async function enterRetell(event, {fromReview = false} = {}) {
       if (blindPort !== connectedPort) return;
       blindPort = null;
       if(typeof guidedRevisit==='function')guidedRevisit();
+      // 새로고침 등으로 가림이 풀려 원문이 다시 보였으므로 이후 다시 말하기는 재확인 수행으로 기록한다.
+      rechecked = true;
       document.getElementById('retell-view').hidden = true;
       document.getElementById('reading').hidden = false;
-      showStatus('글 연결이 끊어졌습니다. 원문을 확인하고 다시 연결하세요.',true,document.getElementById('form-error'));
+      showStatus('기사 페이지가 새로 로드되었거나 연결이 끊어져 원문 가림이 풀렸습니다. 작성 내용은 그대로이며, 「다시 말하기로」를 누르면 이어서 할 수 있습니다(재확인으로 기록).',true,document.getElementById('form-error'));
     });
     const result = await articleMessage(articleSession,{action:'TOGGLE_BLUR',enabled:true,token:articleSession.token});
     if (result?.status !== 'success' || result.enabled !== true) throw new Error(result?.message || '원문을 가리지 못했습니다.');

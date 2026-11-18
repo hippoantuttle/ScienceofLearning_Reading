@@ -75,6 +75,11 @@
       sendResponse(toggle(message.enabled === true, message.token));
       return;
     }
+    // 패널이 연결한 세션이 이 페이지에 아직 살아 있는지만 알려 준다(본문은 보내지 않음).
+    if (message?.action === 'PING_SESSION') {
+      sendResponse({status:'success', alive: !!session && !!message.token && message.token === session.token && session.url === location.href});
+      return;
+    }
     if (message?.action !== 'EXTRACT_ARTICLE') return;
     try { restore(); sendResponse(extractArticle()); }
     catch { sendResponse({ status: 'error', code: 'EXTRACTION_FAILED', message: '본문을 추출하지 못했습니다. 다시 시도하세요.' }); }

@@ -91,6 +91,7 @@ function panelFixture(files, fetchImpl, storageData = {}) {
     onActivated:{addListener(fn){events.activate=fn;}}, onUpdated:{addListener(fn){events.update=fn;}},
     connect:()=>({onDisconnect:{addListener(){}}, disconnect(){}}),
     sendMessage:async(_id, message)=>{if(message.action==='EXTRACT_ARTICLE')return {status:'success', text:storageData.__articleText||'직접 작성한 가상 글입니다.', wordCount:4, charCount:15, token:'synthetic'};
+      if(message.action==='PING_SESSION')return {status:'success', alive:message.token==='synthetic'};
       if(message.enabled)calls.blur++;else calls.restore++;return {status:'success', enabled:!!message.enabled};}
   }};
   const extensionId='jenapgoakhnmlmjcdnkfakkkgjobbfbb', workerListeners=[], panelListeners=[];

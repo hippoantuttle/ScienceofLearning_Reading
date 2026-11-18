@@ -649,12 +649,12 @@ async function guidedMainIdeaPanel(){
   return t;
 }
 const draftKey='readingTrainingDraft';
-test('TASK-027 C: 초급 구조화 중 임시저장은 본문 없이 해시·배치·연결만 담고, 새 패널에서 AI 재요청 없이 그대로 이어간다',async()=>{
+test('TASK-027 C: 초급 구조화 중 임시저장은 해시·처음 불러온 웹 본문·배치·연결만 담고, 새 패널에서 AI 재요청 없이 그대로 이어간다',async()=>{
   const t1=await guidedMainIdeaPanel();
   await vm.runInContext('draftFlush()',t1.context);
   const saved=t1.storageData[draftKey];assert.ok(saved,'임시저장 생성');
   assert.equal(saved.step,'reading');assert.equal(saved.guided.stage,'mainIdea');assert.equal(saved.guided.graph.nodes.length,2);assert.equal(saved.guided.graph.edges.length,1);
-  assert.match(saved.article.textHash,/^[0-9a-f]{64}$/);assert.equal(JSON.stringify(saved).includes(guidedArticle),false,'글 본문 전체를 저장하지 않는다');
+  assert.match(saved.article.textHash,/^[0-9a-f]{64}$/);assert.equal(saved.article.text,guidedArticle,'웹 기사는 처음 불러온 본문을 담는다');assert.equal(Object.values(saved.fields).includes(guidedArticle),false);assert.equal(JSON.stringify(saved.guided).includes(guidedArticle),false);
   assert.equal(saved.fields['main-idea'],'합성 중심 생각');assert.equal(saved.owner,null);
   const t2=panelFixture(assemble({reviewOnly:true,guidedReview:true}).files,null,t1.storageData),e=t2.elements;
   await waitFor(()=>e['draft-resume'].hidden===false);assert.match(e['draft-resume-summary'].textContent,/읽기·구조화 단계/);
@@ -682,13 +682,46 @@ test('TASK-027 C: 본문이 바뀌면 이어가지 않고 임시저장을 남기
   const changed={...structuredClone(t1.storageData),__articleText:'합성 도서관은 평일에만 문을 연다. 다른 글이다. 내용이 바뀌었다.'};
   const t2=panelFixture(assemble({reviewOnly:true,guidedReview:true}).files,null,changed),e=t2.elements;
   await waitFor(()=>e['draft-resume'].hidden===false);await e['draft-resume-continue'].handlers.click();
-  await waitFor(()=>/글 내용이/.test(e['draft-resume-status'].textContent));
+  await waitFor(()=>/본문 대부분이/.test(e['draft-resume-status'].textContent));
   assert.equal(e['draft-resume'].hidden,false);assert.ok(changed[draftKey],'불일치 시 임시저장 유지');
   await e['draft-resume-discard'].handlers.click();await waitFor(()=>!changed[draftKey]);assert.equal(e['draft-resume'].hidden,true);
   const t3=await guidedMainIdeaPanel();await vm.runInContext('draftFlush()',t3.context);
   await t3.elements['to-retell'].handlers.click();await t3.elements['end-training'].handlers.click();await waitFor(()=>!t3.storageData[draftKey]);
   const t4=await guidedMainIdeaPanel();await vm.runInContext('draftFlush()',t4.context);assert.ok(t4.storageData[draftKey]);
   t4.elements['training-context'].dataset={saved:'true'};await vm.runInContext('draftFlush()',t4.context);assert.equal(t4.storageData[draftKey],undefined,'저장 완료 뒤에는 임시저장 삭제');
+});
+
+test('웹 기사 임시저장은 같은 주소·제목이고 본문 대부분이 같으면 일부 줄이 바뀌어도 이어가고, 대부분 다르면 이어가지 않는다',async()=>{
+  const lines=['합성 기사 첫 문단은 도서관 운영 시간을 길게 설명한다. 주말 운영과 평일 운영의 차이를 비교한다.','합성 기사 둘째 문단은 이용자 설문 결과를 자세히 소개하고 연장 운영의 필요성을 주장한다.','합성 기사 셋째 문단은 예산 문제와 인력 배치 계획을 함께 다루며 결론을 제시한다.','조회수 10'];
+  const t1=panelFixture(assemble({reviewOnly:true}).files,null,{__articleText:lines.join('\n')}),e1=t1.elements;
+  await e1.analyze.handlers.click();await e1['start-reading'].handlers.click();
+  e1['main-idea'].value='합성 중심';e1.primary.value='합성 주장';e1.support.value='합성 근거';
+  await vm.runInContext('draftFlush()',t1.context);
+  const saved=t1.storageData[draftKey];assert.equal(saved.article.title,'합성 제목');assert.equal(saved.article.text,lines.join('\n'));
+  const slightly={...structuredClone(t1.storageData),__articleText:[...lines.slice(0,3),'조회수 12'].join('\n')};
+  const t2=panelFixture(assemble({reviewOnly:true}).files,null,slightly),e2=t2.elements;
+  await waitFor(()=>e2['draft-resume'].hidden===false);await e2['draft-resume-continue'].handlers.click();
+  await waitFor(()=>e2.reading.hidden===false);assert.equal(e2['main-idea'].value,'합성 중심');assert.equal(e2.primary.value,'합성 주장');
+  assert.equal(vm.runInContext('articleSession.text',t2.context),lines.join('\n'),'처음 불러온 본문으로 이어간다');
+  const mostly={...structuredClone(t1.storageData),__articleText:[lines[0],'로그인 후 전체 기사를 볼 수 있습니다.'].join('\n')};
+  const t3=panelFixture(assemble({reviewOnly:true}).files,null,mostly),e3=t3.elements;
+  await waitFor(()=>e3['draft-resume'].hidden===false);await e3['draft-resume-continue'].handlers.click();
+  await waitFor(()=>/본문 대부분이/.test(e3['draft-resume-status'].textContent));assert.equal(e3.reading.hidden,true);assert.ok(mostly[draftKey],'불일치 시 임시저장 유지');
+});
+
+test('초급: 본문 일부가 바뀐 같은 글이면 임시저장을 처음 불러온 본문·배치 그대로 이어가고, 같은 주소 새로고침은 초급 세션을 무효화하지 않는다',async()=>{
+  const t1=await guidedMainIdeaPanel();
+  assert.equal(vm.runInContext('guidedInvalidated',t1.context),false);
+  t1.events.update(1,{status:'loading'});assert.equal(vm.runInContext('guidedInvalidated',t1.context),false,'같은 주소 새로고침');
+  await vm.runInContext('draftFlush()',t1.context);
+  const changed={...structuredClone(t1.storageData),__articleText:guidedArticle+'\n조회수 3'};
+  const t2=panelFixture(assemble({reviewOnly:true,guidedReview:true}).files,null,changed),e=t2.elements;
+  await waitFor(()=>e['draft-resume'].hidden===false);await e['draft-resume-continue'].handlers.click();
+  await waitFor(()=>e.reading.hidden===false&&vm.runInContext('guidedSession?.stage',t2.context)==='mainIdea');
+  assert.equal(vm.runInContext('articleSession.text',t2.context),guidedArticle,'처음 불러온 본문 유지');
+  const graph=JSON.parse(vm.runInContext('JSON.stringify(guidedSession.editor.validate())',t2.context));
+  assert.equal(graph.nodes.length,2);assert.equal(graph.edges.length,1);assert.equal(t2.calls.network,0);
+  t2.events.update(1,{url:'https://article.example.org/other'});assert.equal(vm.runInContext('guidedInvalidated',t2.context),true,'주소가 바뀌면 무효화');
 });
 
 test('TASK-028 중급: 관계 카드 추가·빈칸 검사·삭제, 합친 값으로 정리·저장 값 구성, 임시저장 포함',async()=>{

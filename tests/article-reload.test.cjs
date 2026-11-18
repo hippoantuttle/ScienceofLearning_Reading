@@ -6,6 +6,8 @@ const path=require('node:path');
 const vm=require('node:vm');
 const worksheet=require('../worksheet.js');
 const AIContract=require('../ai-client.js');
+const TrainingDraft=require('../training-draft.js');
+const ARTICLE=['합성 기사 첫 문단은 도서관 운영 시간을 길게 설명하고 주말과 평일을 비교한다.','합성 기사 둘째 문단은 이용자 설문 결과를 소개하고 연장 운영의 필요성을 주장한다.','합성 기사 셋째 문단은 예산과 인력 배치 계획을 다루며 결론을 제시한다.','조회수 10'];
 
 test('content.js PING_SESSION은 연결한 토큰일 때만 살아 있다고 답한다',()=>{
  const listeners=[];
@@ -25,9 +27,9 @@ function harness(){
  const elements=Object.fromEntries(ids.map(id=>[id,{id,value:'',hidden:false,textContent:'',handlers:{},setAttribute(){},removeAttribute(){},focus(){},addEventListener(type,fn){this.handlers[type]=fn}}]));
  elements.structure.value='claim';elements.structure.selectedOptions=[{textContent:'주장'}];
  elements.worksheet.reset=()=>{};
- const tab={id:10,windowId:5,url:'https://example.invalid/article'};
+ const tab={id:10,windowId:5,url:'https://example.invalid/article',title:'합성 기사 제목'};
  // 페이지 상태: alive=false면 content.js가 없는 상태(새로고침 직후)
- const page={alive:true,token:'t1',text:'가상 본문',injections:0,blurred:false};
+ const page={alive:true,token:'t1',text:ARTICLE.join('\n'),injections:0,blurred:false};
  const sent=[];const ports=[];
  const chrome={runtime:{sendMessage:async()=>({status:'error'})},windows:{getCurrent:async()=>({id:5})},
   scripting:{executeScript:async()=>{page.injections++;if(!page.alive){page.alive=true;page.token=null;}}},
@@ -41,10 +43,10 @@ function harness(){
     if(msg.action==='TOGGLE_BLUR'){if(msg.enabled&&msg.token!==page.token)return{status:'error',message:'연결한 본문이 변경되었습니다. 다시 연결하세요.'};page.blurred=msg.enabled;return{status:'success',enabled:msg.enabled};}
    }}};
  const source=fs.readFileSync(path.join(__dirname,'..','sidepanel.js'),'utf8');
- const ctx={document:{getElementById:id=>elements[id]},chrome,URL,Worksheet:worksheet,AIContract,confirm:()=>true};
+ const ctx={document:{getElementById:id=>elements[id]},chrome,URL,Worksheet:worksheet,AIContract,TrainingDraft,confirm:()=>true};
  vm.runInNewContext(source,ctx);
  const reload=()=>{page.alive=false;page.token=null;page.blurred=false;};
- return {elements,page,sent,ports,reload,ctx};
+ return {elements,page,sent,ports,reload,ctx,tab};
 }
 async function readyToRetell(h){
  await h.elements.analyze.handlers.click();
@@ -62,14 +64,31 @@ test('읽기·구조화 중 새로고침되어도 본문이 같으면 다시 주
  assert.equal(h.elements['main-idea'].value,'내 생각','작성 내용 유지');
 });
 
-test('새로고침 뒤 본문이 달라졌으면 가리지 않고 읽기 단계에 머문다',async()=>{
+test('새로고침 뒤 제목이 같고 일부 줄만 바뀌면 같은 글로 보고 이어 간다(기록용 본문은 연결 때 그대로)',async()=>{
  const h=harness();await readyToRetell(h);
- h.reload();h.page.text='바뀐 본문';
+ h.reload();h.page.text=[...ARTICLE.slice(0,3),'조회수 12'].join('\n');h.tab.title='(3) 합성 기사 제목';
+ await h.elements['to-retell'].handlers.click();
+ assert.equal(h.elements['retell-view'].hidden,false);
+ assert.equal(h.page.blurred,true);
+ assert.equal(vm.runInContext('articleSession.text',h.ctx),ARTICLE.join('\n'));
+});
+
+test('새로고침 뒤 제목이 다르면 본문이 비슷해도 이어 가지 않는다(본문이 완전히 같을 때만 제목과 무관하게 통과)',async()=>{
+ const h=harness();await readyToRetell(h);
+ h.reload();h.tab.title='다른 기사 제목';h.page.text=[...ARTICLE.slice(0,3),'조회수 12'].join('\n');
+ await h.elements['to-retell'].handlers.click();
+ assert.equal(h.elements['retell-view'].hidden,true);
+ assert.match(h.elements['form-error'].textContent,/같은 글로 확인하지 못했습니다/);
+});
+
+test('새로고침 뒤 본문 대부분이 달라졌으면 가리지 않고 읽기 단계에 머문다',async()=>{
+ const h=harness();await readyToRetell(h);
+ h.reload();h.page.text=[ARTICLE[0],'로그인 후 전체 기사를 볼 수 있습니다.'].join('\n');
  await h.elements['to-retell'].handlers.click();
  assert.equal(h.elements['retell-view'].hidden,true);
  assert.equal(h.elements.reading.hidden,false);
  assert.equal(h.sent.filter(m=>m.action==='TOGGLE_BLUR'&&m.enabled).length,0);
- assert.match(h.elements['form-error'].textContent,/본문이 연결할 때와 달라/);
+ assert.match(h.elements['form-error'].textContent,/같은 글로 확인하지 못했습니다/);
  assert.doesNotMatch(h.elements['form-error'].textContent,/원문 복원 여부/);
  assert.equal(h.elements['main-idea'].value,'내 생각');
 });

@@ -253,7 +253,7 @@ async function connectCurrentTab({skipConfirm = false, resume = false} = {}) {
     document.getElementById('review-view').hidden = true;
     document.getElementById('retell-view').hidden = true;
     rechecked = false;
-    articleSession = { kind: viewer ? 'pdf' : 'web', tabId: tab.id, windowId: tab.windowId, url: tab.url, text: response.text, token: response.token, fallback: response.fallback };
+    articleSession = { kind: viewer ? 'pdf' : 'web', tabId: tab.id, windowId: tab.windowId, url: tab.url, text: response.text, token: response.token, fallback: response.fallback, title: viewer ? '' : (typeof current.title === 'string' ? current.title : '') };
     const titleInput = document.getElementById('submission-article-title');
     // PDF는 파일명을 자동으로 채우지 않는다(TASK-019). 쪽 범위만 후보로 둔다.
     if (titleInput) titleInput.value = tabTitleForRecord(viewer ? response.title : current.title);
@@ -370,7 +370,8 @@ async function validateBoundTab() {
   if (current.url !== articleSession.url || active?.id !== articleSession.tabId) throw new Error('연결한 글이 변경되었거나 다른 탭이 열려 있습니다.');
 }
 // 작성 중 기사 탭이 새로고침되면(직접·사이트 자동 새로고침·메모리 절약 후 재로드) 연결 때 주입한 content.js와 토큰이 사라진다.
-// 같은 탭·같은 주소에서 다시 주입해 본문을 다시 읽고, 연결 때와 본문이 같을 때만 같은 세션으로 이어 간다. 웹 기사만 해당한다.
+// 같은 탭·같은 주소에서 다시 주입해 본문을 다시 읽고, 같은 글(같은 제목 + 본문 유사도, TrainingDraft.sameArticle)일 때만
+// 같은 세션으로 이어 간다. 학습 기록에는 연결 때 본문(session.text)을 그대로 쓰고, 새 본문은 페이지 쪽 가림 대상에만 쓰인다. 웹 기사만 해당한다.
 function injectArticleScript(session) {
   return chrome.scripting.executeScript({target:{tabId:session.tabId}, files:['content.js']});
 }
@@ -384,7 +385,10 @@ async function ensureArticleContent() {
   const response = await chrome.tabs.sendMessage(session.tabId, {action:'EXTRACT_ARTICLE'});
   const current = await chrome.tabs.get(session.tabId);
   if (articleSession !== session || current.url !== session.url) throw new Error('연결한 글이 변경되었습니다. 다시 연결하세요.');
-  if (response?.status !== 'success' || response.text !== session.text) throw new Error('페이지를 새로 불러온 뒤 본문이 연결할 때와 달라 이어갈 수 없습니다. 작성 내용은 그대로이니 원래 글을 확인하세요.');
+  const same = response?.status === 'success' && typeof response.text === 'string' && (response.text === session.text
+    || (typeof TrainingDraft !== 'undefined' && await TrainingDraft.sameArticle({title:session.title, text:session.text}, {title:current.title, text:response.text})));
+  if (articleSession !== session) throw new Error('연결한 글이 변경되었습니다. 다시 연결하세요.');
+  if (!same) throw new Error('페이지를 새로 불러온 뒤 제목이 다르거나 본문 대부분이 연결할 때와 달라 같은 글로 확인하지 못했습니다. 작성 내용은 그대로이니 글이 다 열렸는지 확인하고 다시 누르세요.');
   session.token = response.token;
 }
 async function restoreBlind(target) {

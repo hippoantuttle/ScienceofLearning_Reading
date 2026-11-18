@@ -3,12 +3,12 @@
 const fs=require('node:fs'),path=require('node:path'),crypto=require('node:crypto');
 const {validateConfig,extensionId}=require('./build-extension.cjs');
 const ROOT=path.resolve(__dirname,'..');
-const SOURCES=['server/migrations/20261112040245_optional_relation.sql','server/migrations/20261112042928_learning_support.sql','sentence-source.js','reading-support-contract.js','learning-support.js','server/ai/reading-candidates.mjs','server/ai/prompts/reading-candidates-v1.mjs','server/pilot-access.mjs','server/ai/pilot-worker.mjs','server/ai/worker.mjs','server/ai/feedback.mjs','server/ai/prompts/pre-reading-v2.mjs','server/submissions/worker.mjs','server/submissions/records.mjs','record-contract.js','server/migrations/20261110140000_google_cohort_access.sql'];
+const SOURCES=['server/migrations/20261112040245_optional_relation.sql','server/migrations/20261112042928_learning_support.sql','sentence-source.js','reading-support-contract.js','learning-support.js','server/ai/reading-candidates.mjs','server/ai/prompts/reading-candidates-v1.mjs','server/pilot-access.mjs','server/ai/pilot-worker.mjs','server/ai/worker.mjs','server/ai/feedback.mjs','server/ai/prompts/pre-reading-v2.mjs','server/submissions/worker.mjs','server/submissions/records.mjs','record-contract.js','server/migrations/20261110140000_google_cohort_access.sql','server/migrations/20261118042724_cohort_capacity_50.sql','server/operations/set-active-cohort-capacity-50.sql','server/operations/register-google-invites.template.sql'];
 const sha=value=>crypto.createHash('sha256').update(value).digest('hex');
 const MAX_WINDOW_MS=31*86400000;
 function prepare({config,label,cohortId,capacity=5,expiresAt,unlimited=false,now=Date.now(),root=ROOT}={}){
  const settings=validateConfig(config),deadline=Date.parse(expiresAt);
- if(!/^[a-z0-9][a-z0-9-]{0,63}$/.test(label||'')||!/^[a-z][a-z0-9-]{2,63}$/.test(cohortId||'')||![5,14].includes(capacity))throw Error('후보 식별자·회차·5/14 정원을 확인하세요.');
+ if(!/^[a-z0-9][a-z0-9-]{0,63}$/.test(label||'')||!/^[a-z][a-z0-9-]{2,63}$/.test(cohortId||'')||![5,14,50].includes(capacity))throw Error('후보 식별자·회차·5/14/50 정원을 확인하세요.');
  if(!Number.isFinite(deadline)||new Date(deadline).toISOString()!==expiresAt||deadline<=now||deadline-now>MAX_WINDOW_MS)throw Error('후보 기한은 현재부터 31일 이내 UTC ISO 시각이어야 합니다.');
  const userLimit=unlimited?'unlimited':'4',globalLimit=unlimited?'unlimited':String(capacity*4);
  if(settings.authUrl!=='https://mxhlxenfboiaywyhgyqs.supabase.co'||settings.endpoint!=='https://reading-submissions-pilot.patrick020308.workers.dev/submissions'||settings.aiEndpoint!=='https://reading-ai-pilot.patrick020308.workers.dev/recommend')throw Error('기존 프로젝트·Worker 주소만 후보로 준비합니다.');
@@ -41,6 +41,6 @@ if(require.main===module){
   if(!file?.endsWith('.public.json')||fs.lstatSync(file).isSymbolicLink())throw Error();
   options.config=JSON.parse(fs.readFileSync(file,'utf8'));
   const {destination,report}=prepare(options);console.log(JSON.stringify({output:destination,phase:report.phase,capacity:report.capacity,expiresAt:report.expiresAt,remoteChanged:false}));
- }catch{console.error('후보 준비 실패: 공개 설정·안전한 label/회차·5/14 정원·31일 이내 UTC 기한·새 출력 경로를 확인하세요. 비밀/명단은 읽지 않습니다.');process.exitCode=1;}
+ }catch{console.error('후보 준비 실패: 공개 설정·안전한 label/회차·5/14/50 정원·31일 이내 UTC 기한·새 출력 경로를 확인하세요. 비밀/명단은 읽지 않습니다.');process.exitCode=1;}
 }
 module.exports={prepare,SOURCES};

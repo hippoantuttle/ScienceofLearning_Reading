@@ -215,9 +215,9 @@ guidedEl('structure').addEventListener('change',()=>{if(guidedSession?.mode==='g
 guidedEl('guided-source-picker').addEventListener('toggle',()=>{if(!guidedEl('guided-source-picker').open)return;guidedAction(()=>{const s=guidedBegin();const list=guidedEl('guided-source-list');list.textContent='';for(const sentence of s.snapshot?.sentences||[])list.append(guidedSentenceButton(s,sentence));});});
 for(const id of ['primary','support'])guidedEl(id).addEventListener('input',()=>{if(guidedSession?.mode==='guided'&&guidedSession.manual)guidedAction(()=>guidedBegin());});
 if(SubmissionConfig.guidedReadingEnabled===true)chrome.tabs.onActivated?.addListener(info=>{if(guidedSession?.mode==='guided'&&info.windowId===guidedSession.session.windowId&&info.tabId!==guidedSession.session.tabId)guidedSession.gate.continueManually();});
-// 2026-11-18: 같은 주소로 새로고침되는 것은 글 변경으로 보지 않는다. 초급 후보·배치는 패널이 처음 불러온 본문(articleSession.text)에
+// 2026-11-18: 같은 주소로 새로고침되는 것은 글 변경으로 보지 않는다(2026-11-19: #만 바뀌는 것도 같은 주소). 초급 후보·배치는 패널이 처음 불러온 본문(articleSession.text)에
 // 묶여 있으므로 그대로 유지하고, 다시 말하기 진입 때 같은 글(제목 + 본문 유사도)인지 확인한다. 주소가 바뀌면 기존대로 무효화한다.
-if(SubmissionConfig.guidedReadingEnabled===true)chrome.tabs.onUpdated?.addListener((id,change)=>{if(guidedSession?.mode==='guided'&&id===guidedSession.session.tabId&&typeof change.url==='string'&&change.url!==guidedSession.session.url)guidedInvalidate();});
+if(SubmissionConfig.guidedReadingEnabled===true)chrome.tabs.onUpdated?.addListener((id,change)=>{if(guidedSession?.mode==='guided'&&id===guidedSession.session.tabId&&typeof change.url==='string'&&!sameArticleUrl(change.url,guidedSession.session.url))guidedInvalidate();});
 // TASK-027 C: 임시저장용 초급 상태. 화면에 보인 후보 ID·노출 이력·사용자가 만든 배치·연결만 담는다(AI 응답 원문·토큰 제외).
 function guidedDraft(){
   const s=guidedSession;if(!s||guidedInvalidated)return null;

@@ -21,8 +21,28 @@
     window.removeEventListener('scroll', positionMask, true);
     window.removeEventListener('resize', positionMask);
   }
+  // 2026-11-19: 뉴스 사이트에서는 광고가 주소의 #만 바꾸고(#google_vignette 등), 본문 안 오디오 플레이어 시간처럼
+  // 짧은 줄이 계속 바뀐다. 주소는 # 앞부분만, 본문은 연결 때 글자 수의 75% 이상이 같은 줄로 남아 있으면 같은 글로 본다
+  // (패널의 TrainingDraft.SIMILARITY_THRESHOLD와 같은 기준).
+  const SIMILARITY_THRESHOLD = 0.75;
+  function withoutHash(value) { try { const url = new URL(value); url.hash = ''; return url.href; } catch { return value; } }
+  function lines(text) { return String(text || '').split('\n').map(line => line.replace(/\s+/g, ' ').trim()).filter(Boolean); }
+  function similar(before, after) {
+    if (before === after) return true;
+    const old = lines(before), total = old.reduce((sum, line) => sum + line.length, 0);
+    if (!total) return false;
+    const available = new Map();
+    for (const line of lines(after)) available.set(line, (available.get(line) || 0) + 1);
+    let matched = 0;
+    for (const line of old) { const count = available.get(line) || 0; if (count) { available.set(line, count - 1); matched += line.length; } }
+    return matched / total >= SIMILARITY_THRESHOLD;
+  }
+  function usable(token) {
+    return !!session && !!token && token === session.token && withoutHash(session.url) === withoutHash(location.href)
+      && session.target.isConnected && similar(session.text, (session.target.innerText || '').trim());
+  }
   function toggle(enabled, token) {
-    if (enabled && (!session || !token || token !== session.token || session.url !== location.href || !session.target.isConnected || (session.target.innerText || '').trim() !== session.text)) {
+    if (enabled && !usable(token)) {
       restore(); return {status:'error', code:'STALE_TARGET', message:'연결한 본문이 변경되었습니다. 다시 연결하세요.'};
     }
     if (!enabled) { restore(); return {status:'success', enabled:false}; }
@@ -75,9 +95,10 @@
       sendResponse(toggle(message.enabled === true, message.token));
       return;
     }
-    // 패널이 연결한 세션이 이 페이지에 아직 살아 있는지만 알려 준다(본문은 보내지 않음).
+    // 패널이 연결한 세션이 이 페이지에서 아직 가릴 수 있는 상태인지만 알려 준다(본문은 보내지 않음).
+    // 아니면(사이트가 본문 영역을 다시 그린 경우 등) 패널이 다시 추출해 같은 글인지 확인한다.
     if (message?.action === 'PING_SESSION') {
-      sendResponse({status:'success', alive: !!session && !!message.token && message.token === session.token && session.url === location.href});
+      sendResponse({status:'success', alive: usable(message.token)});
       return;
     }
     if (message?.action !== 'EXTRACT_ARTICLE') return;

@@ -30,10 +30,10 @@ function harness(){
  const tab={id:10,windowId:5,url:'https://example.invalid/article',title:'합성 기사 제목'};
  // 페이지 상태: alive=false면 content.js가 없는 상태(새로고침 직후)
  const page={alive:true,token:'t1',text:ARTICLE.join('\n'),injections:0,blurred:false};
- const sent=[];const ports=[];
+ const sent=[];const ports=[];const updated=[];
  const chrome={runtime:{sendMessage:async()=>({status:'error'})},windows:{getCurrent:async()=>({id:5})},
   scripting:{executeScript:async()=>{page.injections++;if(!page.alive){page.alive=true;page.token=null;}}},
-  tabs:{query:async()=>[tab],get:async()=>tab,
+  tabs:{query:async()=>[tab],get:async()=>tab,onUpdated:{addListener:fn=>updated.push(fn)},
    connect:()=>{const listeners=[];const port={onDisconnect:{addListener:fn=>listeners.push(fn)},disconnect(){},fire(){listeners.forEach(fn=>fn());}};ports.push(port);return port;},
    sendMessage:async(_id,msg)=>{
     if(!page.alive)throw new Error('Could not establish connection. Receiving end does not exist.');
@@ -46,7 +46,7 @@ function harness(){
  const ctx={document:{getElementById:id=>elements[id]},chrome,URL,Worksheet:worksheet,AIContract,TrainingDraft,confirm:()=>true};
  vm.runInNewContext(source,ctx);
  const reload=()=>{page.alive=false;page.token=null;page.blurred=false;};
- return {elements,page,sent,ports,reload,ctx,tab};
+ return {elements,page,sent,ports,reload,ctx,tab,update:change=>Promise.all(updated.map(fn=>fn(tab.id,change)))};
 }
 async function readyToRetell(h){
  await h.elements.analyze.handlers.click();
@@ -115,4 +115,56 @@ test('새로고침으로 content.js가 없어도 원문 복원(읽기로 돌아�
  assert.equal(h.elements.reading.hidden,false);
  assert.equal(h.elements['retell-view'].hidden,true);
  assert.doesNotMatch(h.elements['retell-status'].textContent,/원문 복원 여부/);
+});
+
+function contentPage(text,href){
+ const listeners=[];
+ const style={getPropertyValue:()=>'',getPropertyPriority:()=>'',setProperty(){},removeProperty(){}};
+ const node={innerText:text,isConnected:true,style,getBoundingClientRect:()=>({left:0,top:0,width:1,height:1}),querySelectorAll:()=>[]};
+ const location={href};
+ const context={URL,document:{querySelectorAll:q=>q==='article'?[node]:[],body:node,documentElement:{append(){}},createElement:()=>({style:{},setAttribute(){},remove(){}})},location,crypto:{randomUUID:()=>'token'},window:{addEventListener(){},removeEventListener(){}},chrome:{runtime:{onMessage:{addListener:fn=>listeners.push(fn)}}}};
+ vm.runInNewContext(fs.readFileSync(path.join(__dirname,'..','content.js'),'utf8'),context);
+ const send=m=>{let result;listeners[0](m,{},r=>result=r);return result;};
+ return {node,location,send};
+}
+test('content.js: 주소의 #만 바뀌거나 본문 안 짧은 줄(오디오 플레이어 시간)만 바뀌면 그대로 가린다',()=>{
+ const text=['본문',...ARTICLE.slice(0,3),'00:00','/','01:35'].join('\n');
+ const p=contentPage(text,'https://news.example.org/arti/1.html');
+ p.send({action:'EXTRACT_ARTICLE'});
+ p.location.href='https://news.example.org/arti/1.html#google_vignette';
+ p.node.innerText=['본문',...ARTICLE.slice(0,3),'5:01'].join('\n');
+ assert.equal(p.send({action:'PING_SESSION',token:'token'}).alive,true);
+ assert.equal(p.send({action:'TOGGLE_BLUR',enabled:true,token:'token'}).status,'success');
+ assert.equal(p.send({action:'TOGGLE_BLUR',enabled:false,token:'token'}).status,'success');
+});
+test('content.js: 경로가 바뀌거나 본문 대부분이 바뀌면 가리지 않는다',()=>{
+ const p=contentPage(ARTICLE.join('\n'),'https://news.example.org/arti/1.html');
+ p.send({action:'EXTRACT_ARTICLE'});
+ p.location.href='https://news.example.org/arti/2.html';
+ assert.equal(p.send({action:'TOGGLE_BLUR',enabled:true,token:'token'}).status,'error');
+ p.location.href='https://news.example.org/arti/1.html';
+ p.node.innerText=[ARTICLE[0],'로그인 후 전체 기사를 볼 수 있습니다.'].join('\n');
+ assert.equal(p.send({action:'PING_SESSION',token:'token'}).alive,false);
+ assert.equal(p.send({action:'TOGGLE_BLUR',enabled:true,token:'token'}).status,'error');
+});
+test('패널: 광고가 주소에 #google_vignette를 붙여도 다시 말하기로 넘어가고, 다시 말하기 중 #만 바뀌면 끊지 않는다',async()=>{
+ const h=harness();await readyToRetell(h);
+ h.tab.url='https://example.invalid/article#google_vignette';
+ await h.elements['to-retell'].handlers.click();
+ assert.equal(h.elements['retell-view'].hidden,false);
+ assert.doesNotMatch(h.elements['form-error'].textContent,/다른 탭/);
+ h.tab.url='https://example.invalid/article#goog_rewarded';
+ await h.update({url:h.tab.url});
+ assert.equal(h.elements['retell-view'].hidden,false,'#만 바뀌면 다시 말하기 유지');
+ assert.equal(h.page.blurred,true);
+ h.tab.url='https://example.invalid/other-article';
+ await h.update({url:h.tab.url});
+ assert.equal(h.elements['retell-view'].hidden,true,'다른 주소로 이동하면 중단');
+ assert.match(h.elements['form-error'].textContent,/페이지가 변경/);
+});
+test('sameArticleUrl은 # 뒷부분만 무시한다',()=>{
+ const h=harness();const same=(a,b)=>vm.runInContext('sameArticleUrl('+JSON.stringify(a)+','+JSON.stringify(b)+')',h.ctx);
+ assert.equal(same('https://a.example.org/x?id=1','https://a.example.org/x?id=1#google_vignette'),true);
+ assert.equal(same('https://a.example.org/x?id=1','https://a.example.org/x?id=2'),false);
+ assert.equal(same('https://a.example.org/x','https://a.example.org/y'),false);
 });

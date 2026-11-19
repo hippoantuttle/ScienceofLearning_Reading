@@ -95,7 +95,7 @@ async function draftResume() {
     const panelWindow = await chrome.windows.getCurrent();
     let tab = null;
     try { tab = await chrome.tabs.get(draft.article.tabId); } catch { tab = null; }
-    if (!tab || tab.url !== draft.article.url) { draftMessage('원래 글 탭을 찾을 수 없습니다. 글 탭이 닫혔거나 주소가 바뀌었으면 이어갈 수 없습니다. 같은 글을 다시 열어도 이어지지 않으니, 필요하면 「삭제하고 새로 시작」을 누르세요.'); return; }
+    if (!tab || !sameArticleUrl(tab.url, draft.article.url)) { draftMessage('원래 글 탭을 찾을 수 없습니다. 글 탭이 닫혔거나 주소가 바뀌었으면 이어갈 수 없습니다. 같은 글을 다시 열어도 이어지지 않으니, 필요하면 「삭제하고 새로 시작」을 누르세요.'); return; }
     if (tab.windowId !== panelWindow?.id) { draftMessage('원래 글 탭이 다른 창에 있습니다. 그 창에서 사이드 패널을 열어 이어가세요.'); return; }
     if (tab.active === false) await chrome.tabs.update(tab.id, {active: true});
     draftOffer = null; draftEl('draft-resume').hidden = true;

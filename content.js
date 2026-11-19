@@ -82,7 +82,30 @@
     const text = ((target || document.body)?.innerText || '').trim();
     if (!text) { session = null; return { status: 'error', code: 'EMPTY_ARTICLE', message: '읽을 수 있는 본문이 없습니다. 다른 페이지에서 다시 시도하세요.' }; }
     session = { target: target || document.body, token: crypto.randomUUID(), url: location.href, text };
-    return { status: 'success', text, wordCount: text.split(/\s+/).filter(Boolean).length, charCount: text.length, fallback, token: session.token };
+    let hints = {noise: [], captions: []};
+    try { hints = collectHints(session.target, text.length); } catch { /* 힌트는 선택 정보다. 실패해도 본문 추출은 그대로 */ }
+    return { status: 'success', text, wordCount: text.split(/\s+/).filter(Boolean).length, charCount: text.length, fallback, token: session.token, hints };
+  }
+  // 2026-11-19 초급 문장 목록 정리용 힌트. 본문(text)은 바꾸지 않고, 본문 영역 안에서 본문이 아닌 요소의 줄만 따로 모은다.
+  // noise: 버튼·화면낭독기 전용 글자·광고/배너 영역·오디오/영상·시간·nav/aside, captions: 사진 설명(figcaption).
+  const NOISE_SELECTOR = 'button,[role="button"],nav,aside,audio,video,time,.sr-only,.blind,.screen_out,.visually-hidden,.a11y-hidden,[class*="sr-only"]';
+  // 대소문자 구분: BaseAd_·adWrapper·ad-box·banner 등은 잡고 loading·header·shadow·address는 잡지 않는다.
+  const AD_CLASS = /[a-z]Ad(?=[A-Z_\-\s]|$)|(?:^|[\s_-])(?:[Aa]ds?|[Aa]dvert\w*|[Bb]anner\w*|[Ss]ponsor\w*)(?=[A-Z_\-\s]|$)/;
+  function collectHints(root, totalLength) {
+    const noise = [], captions = [], MAX = 400;
+    const push = (list, element) => {
+      const value = (element.innerText || '').trim();
+      // 본문 대부분을 감싸는 요소는 제외 요소로 보지 않는다(잘못된 광고 클래스 등).
+      if (!value || value.length > totalLength / 2) return;
+      for (const line of value.split('\n')) { const item = line.replace(/\s+/g, ' ').trim(); if (item && list.length < MAX) list.push(item.slice(0, 2000)); }
+    };
+    for (const element of root.querySelectorAll(NOISE_SELECTOR)) push(noise, element);
+    for (const element of root.querySelectorAll('[class]')) {
+      const name = typeof element.className === 'string' ? element.className : element.getAttribute?.('class') || '';
+      if (AD_CLASS.test(name)) push(noise, element);
+    }
+    for (const element of root.querySelectorAll('figcaption')) push(captions, element);
+    return {noise, captions};
   }
 
   chrome.runtime.onConnect?.addListener((port) => {

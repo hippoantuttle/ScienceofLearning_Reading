@@ -260,7 +260,9 @@ async function connectCurrentTab({skipConfirm = false, resume = false} = {}) {
     document.getElementById('review-view').hidden = true;
     document.getElementById('retell-view').hidden = true;
     rechecked = false;
-    articleSession = { kind: viewer ? 'pdf' : 'web', tabId: tab.id, windowId: tab.windowId, url: tab.url, text: response.text, token: response.token, fallback: response.fallback, title: viewer ? '' : (typeof current.title === 'string' ? current.title : '') };
+    articleSession = { kind: viewer ? 'pdf' : 'web', tabId: tab.id, windowId: tab.windowId, url: tab.url, text: response.text, token: response.token, fallback: response.fallback, title: viewer ? '' : (typeof current.title === 'string' ? current.title : ''),
+      // 초급 「원문에서 추가」 목록 정리용 힌트(웹 기사만). 본문·문장 ID에는 영향이 없다.
+      hints: !viewer && typeof SentenceFilter !== 'undefined' ? SentenceFilter.hints(response.hints) : null };
     const titleInput = document.getElementById('submission-article-title');
     // PDF는 파일명을 자동으로 채우지 않는다(TASK-019). 쪽 범위만 후보로 둔다.
     if (titleInput) titleInput.value = tabTitleForRecord(viewer ? response.title : current.title);

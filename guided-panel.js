@@ -17,6 +17,7 @@ function resetGuided(){
   if(guidedEl('main-idea'))guidedEl('main-idea').disabled=false;
   if(guidedEl('guided-return'))guidedEl('guided-return').hidden=true;
   if(guidedEl('guided-back-structure'))guidedEl('guided-back-structure').hidden=true;
+  guidedSourceResetTools();
 }
 function guidedInvalidate(){
   if(guidedSession?.mode!=='guided')return;
@@ -109,11 +110,47 @@ function guidedAction(fn){try{const result=fn();return result===undefined?true:r
 function guidedSentenceButton(s,sentence,candidate=false){
   const row=document.createElement('li'),text=document.createElement('p');text.textContent=sentence.text;row.append(text);
   const add=document.createElement('button');add.type='button';add.textContent='문장 선택';add.className='guided-sentence-pick';add.setAttribute('aria-label',sentence.text+' 문장 선택');add.setAttribute('aria-pressed',String(s.selectedSentence===sentence.id));add.draggable=true;
-  (s.pickButtons||(s.pickButtons=[])).push({id:sentence.id,button:add});
+  (s.pickButtons||(s.pickButtons=[])).push({id:sentence.id,button:add,candidate});
   add.addEventListener('click',()=>guidedAction(()=>{guidedBegin();s.selectedSentence=sentence.id;guidedEl('guided-board-hint').textContent='선택한 문장을 놓을 역할 자리를 고르세요.';guidedRender();}));
   add.addEventListener('dragstart',event=>{if(!guidedCurrent(s)||!guidedAction(()=>guidedBegin())){event.preventDefault();return;}event.dataTransfer.setData('text/plain','reading-sentence:'+sentence.id);});row.append(add);
   if(candidate){const exclude=document.createElement('button');exclude.type='button';exclude.textContent='후보 제외';exclude.addEventListener('click',()=>guidedAction(()=>{guidedBegin();s.excluded.add(sentence.id);if(s.selectedSentence===sentence.id)s.selectedSentence=null;row.remove();guidedRender();}));row.append(exclude);}
   return row;
+}
+// 2026-11-19 「원문에서 추가」 목록: 무의미 문장(SentenceFilter 'noise')은 기본 숨김, 사진 설명은 표시를 붙여 남기고, 검색으로 거른다.
+// 문장 ID·본문·AI 후보는 바꾸지 않는다. 숨긴 문장은 「숨긴 문장 보기」로 언제든 고를 수 있다.
+function guidedSourceResetTools(){
+  if(guidedEl('guided-source-search'))guidedEl('guided-source-search').value='';
+  const toggle=guidedEl('guided-source-hidden');if(toggle){toggle.hidden=true;toggle.setAttribute('aria-pressed','false');toggle.textContent='숨긴 문장 보기';}
+  if(guidedEl('guided-source-count'))guidedEl('guided-source-count').textContent='';
+  if(guidedEl('guided-source-empty'))guidedEl('guided-source-empty').hidden=true;
+}
+function guidedSourceKinds(s){
+  const sentences=s.snapshot?.sentences||[];
+  if(!s.sourceKinds||s.sourceKindsFor!==sentences){s.sourceKinds=typeof SentenceFilter!=='undefined'?SentenceFilter.classify(sentences,s.session?.hints):{};s.sourceKindsFor=sentences;}
+  return s.sourceKinds;
+}
+function guidedSourceRender(s){
+  const list=guidedEl('guided-source-list');list.textContent='';
+  s.pickButtons=(s.pickButtons||[]).filter(item=>item.candidate);
+  const sentences=s.snapshot?.sentences||[],kinds=guidedSourceKinds(s),showHidden=!!s.showHiddenSources;
+  const query=guidedEl('guided-source-search')?.value||'';
+  const matches=text=>typeof SentenceFilter==='undefined'||SentenceFilter.matches(text,query);
+  let placed=new Set();try{placed=new Set((s.editor?.read()?.nodes||[]).map(node=>node.sentenceId));}catch{}
+  const hiddenCount=sentences.filter(x=>kinds[x.id]==='noise').length;
+  const pool=sentences.filter(x=>showHidden||kinds[x.id]!=='noise'),shown=pool.filter(x=>matches(x.text));
+  for(const sentence of shown){
+    const row=guidedSentenceButton(s,sentence),tags=[];
+    if(kinds[sentence.id]==='caption')tags.push('사진 설명');
+    if(kinds[sentence.id]==='noise')tags.push('숨긴 문장');
+    if(placed.has(sentence.id))tags.push('배치됨');
+    if(tags.length){const box=document.createElement('span');box.className='guided-source-tags';for(const tag of tags){const item=document.createElement('span');item.className='guided-source-tag';item.textContent=tag;box.append(item);}row.append(box);}
+    list.append(row);
+  }
+  const toggle=guidedEl('guided-source-hidden');
+  if(toggle){toggle.hidden=hiddenCount===0;toggle.setAttribute('aria-pressed',String(showHidden));toggle.textContent=showHidden?'숨긴 문장 다시 숨기기':'숨긴 문장 '+hiddenCount+'개 보기';}
+  const count=guidedEl('guided-source-count');
+  if(count)count.textContent=query.trim()?'검색 결과 '+pool.length+'개 중 '+shown.length+'개':'원문 문장 '+shown.length+'개'+(hiddenCount&&!showHidden?' · 본문이 아닌 것으로 보이는 문장 '+hiddenCount+'개 숨김':'');
+  if(guidedEl('guided-source-empty'))guidedEl('guided-source-empty').hidden=shown.length>0;
 }
 function guidedUpdateSelection(s){
   for(const item of s.pickButtons||[]){item.button.setAttribute('aria-pressed',String(s.selectedSentence===item.id));item.button.textContent=s.selectedSentence===item.id?'선택됨':'문장 선택';}
@@ -197,8 +234,7 @@ function guidedReturn(){
 guidedEl('guided-return').addEventListener('click',()=>guidedAction(guidedReturn));
 guidedEl('guided-no-candidates').addEventListener('click',()=>guidedAction(()=>{
   const s=guidedBegin();guidedRememberView(s);s.gate.continueManually();guidedEl('guided-candidates').textContent='';
-  guidedEl('guided-source-picker').open=true;const list=guidedEl('guided-source-list');list.textContent='';
-  for(const sentence of s.snapshot?.sentences||[])list.append(guidedSentenceButton(s,sentence));
+  guidedEl('guided-source-picker').open=true;guidedSourceRender(s);
   guidedEl('guided-status').textContent='아래 원문 문장 목록에서 골라 배치하세요. 이전 구성 화면으로 돌아갈 수도 있습니다.';
 }));
 guidedEl('guided-manual').addEventListener('click',()=>guidedAction(()=>{
@@ -212,7 +248,10 @@ guidedEl('guided-to-main').addEventListener('click',()=>guidedAdvance());
 // TASK-027: 중심 생각 단계에서 구조화 단계로 명시적으로 돌아간다. 작성한 중심 생각은 보존하고 AI 후보 요청은 다시 열지 않는다.
 guidedEl('guided-back-structure')?.addEventListener('click',()=>guidedAction(()=>{guidedBegin();guidedEl('guided-status').textContent='구조화 단계로 돌아왔습니다. 배치·연결을 고친 뒤 「구조도 확인 · 중심 생각 작성」을 다시 누르세요. 작성한 중심 생각은 유지됩니다.';guidedEl('structure').focus();}));
 guidedEl('structure').addEventListener('change',()=>{if(guidedSession?.mode==='guided')guidedAction(()=>{const s=guidedBegin();if(!s.manual){s.editor.selectType(guidedEl('structure').value);guidedRender();}});});
-guidedEl('guided-source-picker').addEventListener('toggle',()=>{if(!guidedEl('guided-source-picker').open)return;guidedAction(()=>{const s=guidedBegin();const list=guidedEl('guided-source-list');list.textContent='';for(const sentence of s.snapshot?.sentences||[])list.append(guidedSentenceButton(s,sentence));});});
+guidedEl('guided-source-picker').addEventListener('toggle',()=>{if(!guidedEl('guided-source-picker').open)return;guidedAction(()=>{guidedSourceRender(guidedBegin());});});
+// 검색·숨긴 문장 보기는 목록만 다시 그린다(네트워크·AI 요청 없음).
+guidedEl('guided-source-search')?.addEventListener('input',()=>{if(guidedSession?.mode==='guided'&&guidedSession.snapshot&&!guidedInvalidated)guidedAction(()=>{guidedSourceRender(guidedBegin());});});
+guidedEl('guided-source-hidden')?.addEventListener('click',()=>{if(guidedSession?.mode==='guided'&&guidedSession.snapshot&&!guidedInvalidated)guidedAction(()=>{const s=guidedBegin();s.showHiddenSources=!s.showHiddenSources;guidedSourceRender(s);});});
 for(const id of ['primary','support'])guidedEl(id).addEventListener('input',()=>{if(guidedSession?.mode==='guided'&&guidedSession.manual)guidedAction(()=>guidedBegin());});
 if(SubmissionConfig.guidedReadingEnabled===true)chrome.tabs.onActivated?.addListener(info=>{if(guidedSession?.mode==='guided'&&info.windowId===guidedSession.session.windowId&&info.tabId!==guidedSession.session.tabId)guidedSession.gate.continueManually();});
 // 2026-11-18: 같은 주소로 새로고침되는 것은 글 변경으로 보지 않는다(2026-11-19: #만 바뀌는 것도 같은 주소). 초급 후보·배치는 패널이 처음 불러온 본문(articleSession.text)에
@@ -258,7 +297,7 @@ async function guidedResume(d){
   const list=guidedEl('guided-candidates');list.textContent='';
   if(!state.manual&&state.snapshot){
     if(g.candidateExposure)for(const sentence of state.snapshot.sentences.filter(x=>g.candidateIds.includes(x.id)&&!state.excluded.has(x.id)))list.append(guidedSentenceButton(state,sentence,true));
-    else{guidedEl('guided-source-picker').open=true;const source=guidedEl('guided-source-list');source.textContent='';for(const sentence of state.snapshot.sentences)source.append(guidedSentenceButton(state,sentence));}
+    else{guidedEl('guided-source-picker').open=true;guidedSourceRender(state);}
     guidedRender();
   }
   let stage='structuring';

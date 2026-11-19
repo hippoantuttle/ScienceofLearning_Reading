@@ -154,6 +154,12 @@ details.dev-only summary { color: var(--muted); font-weight: 600; }
 #guided-work .guided-sentence-pick { text-align: left; }
 #guided-work .guided-sentence-pick[aria-pressed="true"], #guided-edges button[aria-pressed="true"] { background: var(--accent); color: var(--accent-fg); border-color: var(--accent); }
 #guided-source-picker { margin-block: var(--spacing-4); }
+/* 2026-11-19 원문에서 추가: 검색·숨긴 문장 보기·문장 표시(사진 설명·숨긴 문장·배치됨) */
+.guided-source-tools { display: flex; flex-wrap: wrap; align-items: center; gap: var(--spacing-2); margin-block: var(--spacing-2); }
+.guided-source-tools label, .guided-source-tools input[type="search"] { flex: 1 1 100%; min-width: 0; box-sizing: border-box; }
+.guided-source-tools #guided-source-count { flex: 1 1 auto; margin: 0; }
+.guided-source-tags { display: flex; flex-wrap: wrap; gap: var(--spacing-1, 4px); flex: 1 1 100%; order: -1; }
+.guided-source-tag { font-size: 0.8125rem; padding: 0 var(--spacing-2); border: 1px solid currentColor; border-radius: 999px; opacity: 0.8; }
 .guided-board { position: relative; display: grid; gap: var(--spacing-8); padding: var(--spacing-4) var(--spacing-5) var(--spacing-7); }
 .guided-board .guided-zone { position: relative; border: 0; padding: 0; margin: 0; min-width: 0; }
 .guided-zone-heading { position: relative; z-index: 2; display: flex; align-items: center; flex-wrap: wrap; justify-content: space-between; gap: var(--spacing-2); margin-bottom: var(--spacing-6); pointer-events: none; }

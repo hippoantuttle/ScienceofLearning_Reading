@@ -90,7 +90,7 @@ function panelFixture(files, fetchImpl, storageData = {}) {
     query:async()=>[tab], get:async()=>tab,
     onActivated:{addListener(fn){events.activate=fn;}}, onUpdated:{addListener(fn){events.update=fn;}},
     connect:()=>({onDisconnect:{addListener(){}}, disconnect(){}}),
-    sendMessage:async(_id, message)=>{if(message.action==='EXTRACT_ARTICLE')return {status:'success', text:storageData.__articleText||'직접 작성한 가상 글입니다.', wordCount:4, charCount:15, token:'synthetic'};
+    sendMessage:async(_id, message)=>{if(message.action==='EXTRACT_ARTICLE')return {status:'success', text:storageData.__articleText||'직접 작성한 가상 글입니다.', wordCount:4, charCount:15, token:'synthetic', hints:storageData.__articleHints};
       if(message.action==='PING_SESSION')return {status:'success', alive:message.token==='synthetic'};
       if(message.enabled)calls.blur++;else calls.restore++;return {status:'success', enabled:!!message.enabled};}
   }};
@@ -722,6 +722,34 @@ test('초급: 본문 일부가 바뀐 같은 글이면 임시저장을 처음 �
   const graph=JSON.parse(vm.runInContext('JSON.stringify(guidedSession.editor.validate())',t2.context));
   assert.equal(graph.nodes.length,2);assert.equal(graph.edges.length,1);assert.equal(t2.calls.network,0);
   t2.events.update(1,{url:'https://article.example.org/other'});assert.equal(vm.runInContext('guidedInvalidated',t2.context),true,'주소가 바뀌면 무효화');
+});
+
+test('초급 원문에서 추가: 무의미 문장은 숨기고(숨긴 문장 보기로 복구), 사진 설명은 표시해 남기며, 검색으로 거른다',async()=>{
+  const article=['본문','홍길동기자','수정 2026-11-11 15:40','5:01','합성 도서관은 주말에도 문을 연다.','주민들이 주말 운영을 요청했다.','광고','자원봉사자가 운영을 돕는다.','도서관 앞에서 주민들이 줄을 서 있다.','AFP 연합뉴스','홍길동 기자 hong@example.org'].join('\n');
+  const t=panelFixture(assemble({reviewOnly:true,guidedReview:true}).files,null,{__articleText:article,__articleHints:{noise:['본문'],captions:['도서관 앞에서 주민들이 줄을 서 있다.','AFP 연합뉴스']}}),e=t.elements;
+  await e.analyze.handlers.click();e['reading-mode'].value='guided';await e['reading-mode'].handlers.change();
+  await e['start-reading'].handlers.click();
+  e['guided-source-picker'].open=true;await e['guided-source-picker'].handlers.toggle();
+  const rows=()=>e['guided-source-list'].children.map(row=>row.children[0].textContent);
+  assert.deepEqual(rows(),['합성 도서관은 주말에도 문을 연다.','주민들이 주말 운영을 요청했다.','자원봉사자가 운영을 돕는다.','도서관 앞에서 주민들이 줄을 서 있다.']);
+  const caption=e['guided-source-list'].children[3];assert.match(caption.children.at(-1).textContent,/사진 설명/);
+  assert.equal(e['guided-source-hidden'].hidden,false);assert.match(e['guided-source-hidden'].textContent,/숨긴 문장 7개 보기/);
+  assert.match(e['guided-source-count'].textContent,/원문 문장 4개 · 본문이 아닌 것으로 보이는 문장 7개 숨김/);
+  await e['guided-source-hidden'].handlers.click();
+  assert.equal(rows().length,11,'숨긴 문장도 다시 고를 수 있다');assert.equal(e['guided-source-hidden'].attrs['aria-pressed'],'true');
+  assert.match(e['guided-source-list'].children[0].children.at(-1).textContent,/숨긴 문장/);
+  await e['guided-source-hidden'].handlers.click();assert.equal(rows().length,4);
+  e['guided-source-search'].value='주 말';await e['guided-source-search'].handlers.input();
+  assert.deepEqual(rows(),['합성 도서관은 주말에도 문을 연다.','주민들이 주말 운영을 요청했다.'],'띄어쓰기 차이를 무시한 검색');
+  assert.match(e['guided-source-count'].textContent,/검색 결과 4개 중 2개/);assert.equal(e['guided-source-empty'].hidden,true);
+  e['guided-source-search'].value='박물관';await e['guided-source-search'].handlers.input();
+  assert.equal(rows().length,0);assert.equal(e['guided-source-empty'].hidden,false);
+  e['guided-source-search'].value='주민';await e['guided-source-search'].handlers.input();
+  await e['guided-source-list'].children[0].children[1].handlers.click();await findBoardElement(t,'place:primary').handlers.click();
+  e['guided-source-search'].value='';await e['guided-source-search'].handlers.input();
+  assert.match(e['guided-source-list'].children[1].children.at(-1).textContent,/배치됨/,'다시 그리면 이미 배치한 문장을 표시한다');
+  const graph=JSON.parse(vm.runInContext('JSON.stringify(guidedSession.editor.read())',t.context));
+  assert.equal(graph.nodes[0].sentenceId,'s0006','문장 ID는 원문 분할 그대로');assert.equal(t.calls.network,0);
 });
 
 test('TASK-028 중급: 관계 카드 추가·빈칸 검사·삭제, 합친 값으로 정리·저장 값 구성, 임시저장 포함',async()=>{

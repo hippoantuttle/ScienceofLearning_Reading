@@ -47,6 +47,13 @@ function isPdfViewerUrl(value) {
   try { const url = new URL(value), base = new URL(chrome.runtime.getURL(PDF_VIEWER_PAGE)); return url.origin === base.origin && url.pathname === base.pathname; }
   catch { return false; }
 }
+// 같은 글 주소인지: # 뒷부분(fragment)은 무시하고 도메인·경로·검색어만 비교한다(2026-11-19).
+// 뉴스 사이트 광고(#google_vignette·#goog_rewarded 등)·추천 위젯이 #만 바꿔도 다른 글로 오인하지 않기 위함.
+function sameArticleUrl(a, b) {
+  if (typeof a !== 'string' || typeof b !== 'string') return false;
+  try { const x = new URL(a), y = new URL(b); x.hash = ''; y.hash = ''; return x.href === y.href; }
+  catch { return a === b; }
+}
 function articleMessage(session, message) {
   return session?.kind === 'pdf'
     ? chrome.runtime.sendMessage({...message, target:'pdf-viewer', tabId:session.tabId})
@@ -247,13 +254,15 @@ async function connectCurrentTab({skipConfirm = false, resume = false} = {}) {
       response = await chrome.tabs.sendMessage(tab.id, { action: 'EXTRACT_ARTICLE' });
     }
     const current = await chrome.tabs.get(tab.id);
-    if (current.url !== tab.url) throw new Error('페이지가 변경되었습니다. 기사에서 다시 분석하세요.');
+    if (!sameArticleUrl(current.url, tab.url)) throw new Error('페이지가 변경되었습니다. 기사에서 다시 분석하세요.');
     if (!response || response.status !== 'success') throw new Error(response?.message || '본문을 확인하지 못했습니다. 다시 시도하세요.');
     document.getElementById('retell-input').value = '';
     document.getElementById('review-view').hidden = true;
     document.getElementById('retell-view').hidden = true;
     rechecked = false;
-    articleSession = { kind: viewer ? 'pdf' : 'web', tabId: tab.id, windowId: tab.windowId, url: tab.url, text: response.text, token: response.token, fallback: response.fallback };
+    articleSession = { kind: viewer ? 'pdf' : 'web', tabId: tab.id, windowId: tab.windowId, url: tab.url, text: response.text, token: response.token, fallback: response.fallback, title: viewer ? '' : (typeof current.title === 'string' ? current.title : ''),
+      // 초급 「원문에서 추가」 목록 정리용 힌트(웹 기사만). 본문·문장 ID에는 영향이 없다.
+      hints: !viewer && typeof SentenceFilter !== 'undefined' ? SentenceFilter.hints(response.hints) : null };
     const titleInput = document.getElementById('submission-article-title');
     // PDF는 파일명을 자동으로 채우지 않는다(TASK-019). 쪽 범위만 후보로 둔다.
     if (titleInput) titleInput.value = tabTitleForRecord(viewer ? response.title : current.title);
@@ -333,7 +342,7 @@ document.getElementById('start-reading').addEventListener('click', async () => {
     if (!articleSession) throw new Error('먼저 글을 연결하세요.');
     const current = await chrome.tabs.get(articleSession.tabId);
     const [active] = await chrome.tabs.query({ active: true, windowId: articleSession.windowId });
-    if (current.url !== articleSession.url || active?.id !== articleSession.tabId) throw new Error('연결한 글이 변경되었거나 다른 탭이 열려 있습니다. 원래 글로 돌아가거나 새 글을 연결하세요.');
+    if (!sameArticleUrl(current.url, articleSession.url) || active?.id !== articleSession.tabId) throw new Error('연결한 글이 변경되었거나 다른 탭이 열려 있습니다. 원래 글로 돌아가거나 새 글을 연결하세요.');
     await enterReadingView();
     showStatus('읽기·구조화 중입니다. 직접 작성한 뒤 다시 말하기로 이동하세요.');
     const status=document.getElementById('reading-start-status');if(status)status.textContent='';
@@ -367,10 +376,11 @@ async function validateBoundTab() {
   if (!Number.isInteger(context?.id) || context.id !== articleSession.windowId) throw new Error('패널 창을 확인할 수 없습니다.');
   const current = await chrome.tabs.get(articleSession.tabId);
   const [active] = await chrome.tabs.query({active:true, windowId:articleSession.windowId});
-  if (current.url !== articleSession.url || active?.id !== articleSession.tabId) throw new Error('연결한 글이 변경되었거나 다른 탭이 열려 있습니다.');
+  if (!sameArticleUrl(current.url, articleSession.url) || active?.id !== articleSession.tabId) throw new Error('연결한 글이 변경되었거나 다른 탭이 열려 있습니다.');
 }
 // 작성 중 기사 탭이 새로고침되면(직접·사이트 자동 새로고침·메모리 절약 후 재로드) 연결 때 주입한 content.js와 토큰이 사라진다.
-// 같은 탭·같은 주소에서 다시 주입해 본문을 다시 읽고, 연결 때와 본문이 같을 때만 같은 세션으로 이어 간다. 웹 기사만 해당한다.
+// 같은 탭·같은 주소에서 다시 주입해 본문을 다시 읽고, 같은 글(같은 제목 + 본문 유사도, TrainingDraft.sameArticle)일 때만
+// 같은 세션으로 이어 간다. 학습 기록에는 연결 때 본문(session.text)을 그대로 쓰고, 새 본문은 페이지 쪽 가림 대상에만 쓰인다. 웹 기사만 해당한다.
 function injectArticleScript(session) {
   return chrome.scripting.executeScript({target:{tabId:session.tabId}, files:['content.js']});
 }
@@ -383,8 +393,11 @@ async function ensureArticleContent() {
   await injectArticleScript(session);
   const response = await chrome.tabs.sendMessage(session.tabId, {action:'EXTRACT_ARTICLE'});
   const current = await chrome.tabs.get(session.tabId);
-  if (articleSession !== session || current.url !== session.url) throw new Error('연결한 글이 변경되었습니다. 다시 연결하세요.');
-  if (response?.status !== 'success' || response.text !== session.text) throw new Error('페이지를 새로 불러온 뒤 본문이 연결할 때와 달라 이어갈 수 없습니다. 작성 내용은 그대로이니 원래 글을 확인하세요.');
+  if (articleSession !== session || !sameArticleUrl(current.url, session.url)) throw new Error('연결한 글이 변경되었습니다. 다시 연결하세요.');
+  const same = response?.status === 'success' && typeof response.text === 'string' && (response.text === session.text
+    || (typeof TrainingDraft !== 'undefined' && await TrainingDraft.sameArticle({title:session.title, text:session.text}, {title:current.title, text:response.text})));
+  if (articleSession !== session) throw new Error('연결한 글이 변경되었습니다. 다시 연결하세요.');
+  if (!same) throw new Error('페이지를 새로 불러온 뒤 제목이 다르거나 본문 대부분이 연결할 때와 달라 같은 글로 확인하지 못했습니다. 작성 내용은 그대로이니 글이 다 열렸는지 확인하고 다시 누르세요.');
   session.token = response.token;
 }
 async function restoreBlind(target) {
@@ -574,7 +587,8 @@ chrome.tabs.onActivated?.addListener(info => {
   }
 });
 chrome.tabs.onUpdated?.addListener((id,change) => {
-  if (blindPort && articleSession && id === articleSession.tabId && (change.url || change.status === 'loading')) {
+  // #만 바뀐 경우(광고·위젯)는 같은 문서이므로 다시 말하기를 끊지 않는다. 새로 불러오기·다른 주소 이동만 중단한다.
+  if (blindPort && articleSession && id === articleSession.tabId && ((typeof change.url === 'string' && !sameArticleUrl(change.url, articleSession.url)) || change.status === 'loading')) {
     return interruptRetell('페이지가 변경되었습니다. 글을 다시 연결하세요.');
   }
 });

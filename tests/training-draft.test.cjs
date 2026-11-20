@@ -67,3 +67,20 @@ test('PDF 단위 복원: 단위 수가 같을 때만, 모두 작성했을 때만
   const d = PdfWorksheet.create(units); d.restore({mains:['a','','c'], index:9, phase:'structure'}); assert.equal(d.phase(), 'units', '미작성 단위가 있으면 단위 단계'); assert.equal(d.index(), 0);
   assert.throws(() => PdfWorksheet.create(units).restore({mains:['a','b'], index:0, phase:'units'}), /다릅니다/);
 });
+
+test('같은 글 판단: 제목(알림 수 무시) + 본문 글자 수 기준 75% 이상 줄 일치',async()=>{
+  const base=['첫째 문단은 충분히 긴 합성 문장으로 이루어져 있으며 주제를 소개한다.','둘째 문단도 충분히 긴 합성 문장으로 근거를 제시하고 설명을 이어 간다.','셋째 문단은 결론을 정리하며 합성 기사를 마무리하는 긴 문장이다.','조회수 10'];
+  const text=base.join('\n');
+  assert.equal(TrainingDraft.normalizeTitle(' (12)  합성   제목 '),'합성 제목');
+  assert.equal(await TrainingDraft.sameArticle({title:'합성 제목',text},{title:'(3) 합성 제목',text:[...base.slice(0,3),'조회수 99'].join('\n')}),true,'짧은 줄 하나만 바뀜');
+  assert.equal(await TrainingDraft.sameArticle({title:'합성 제목',text},{title:'다른 제목',text}),false,'제목이 다르면 같은 글이 아님');
+  assert.equal(await TrainingDraft.sameArticle({title:'합성 제목',text},{title:'합성 제목',text:base[0]}),false,'본문 대부분이 없음(페이월 등)');
+  assert.equal(await TrainingDraft.sameArticle({title:'합성 제목',text},{title:'합성 제목',text:'메뉴\n'+text+'\n광고'}),true,'본문 전체가 포함되면 같은 글');
+  assert.equal(TrainingDraft.SIMILARITY_THRESHOLD,0.75);
+  const four=['가'.repeat(25),'나'.repeat(25),'다'.repeat(25),'라'.repeat(25)];
+  assert.equal(await TrainingDraft.sameArticle({title:'t',text:four.join('\n')},{title:'t',text:four.slice(0,3).join('\n')}),true,'75% 남으면 같은 글');
+  assert.equal(await TrainingDraft.sameArticle({title:'t',text:four.join('\n')},{title:'t',text:[...four.slice(0,2),'다'.repeat(24)].join('\n')}),false,'75% 미만이면 다른 글');
+  const draft=await sample();draft.article.title='합성 제목';draft.article.text=text;assert.ok(TrainingDraft.validate(draft),'웹 기사는 처음 불러온 본문을 담을 수 있다');
+  const pdf=await sample();pdf.article.kind='pdf';pdf.article.text=text;assert.equal(TrainingDraft.validate(pdf),null,'PDF 본문은 담지 않는다');
+  const big=await sample();big.article.text='가'.repeat(TrainingDraft.MAX_ARTICLE_TEXT+1);assert.equal(TrainingDraft.validate(big),null);
+});

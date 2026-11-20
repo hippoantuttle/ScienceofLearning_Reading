@@ -9,7 +9,7 @@ const ROOT = path.resolve(__dirname, '..');
 const RUNTIME = Object.freeze([
   'background.js', 'content.js', 'sidepanel.html', 'sidepanel.css', 'ui-theme.css',
   'panel-ui.js', 'chip-select.js', 'ai-result-view.js','worksheet.js', 'ai-client.js', 'submission-client.js',
-  'sentence-source.js','reading-support-contract.js','learning-support.js','reading-support.js','guided-board.js','guided-panel.js','support-view.js',
+  'sentence-source.js','sentence-filter.js','reading-support-contract.js','learning-support.js','reading-support.js','guided-board.js','guided-panel.js','support-view.js',
   'record-contract.js', 'record-client.js', 'submission-contract.js',
   'submission-http.js', 'submission-auth.js', 'google-auth.js', 'session-auth.js', 'panel-session.js', 'submission-flow.js',
   'sidepanel.js', 'submission-panel.js', 'pilot-ai-panel.js',

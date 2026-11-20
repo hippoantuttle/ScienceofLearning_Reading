@@ -1,7 +1,7 @@
 'use strict';
 // TASK-027 C: 저장 전 훈련을 chrome.storage.session에 임시저장하고, 패널을 다시 열면 이어갈지 묻는다.
 // - 저장: 글을 연결한 뒤 입력·단계 변화가 있을 때(잠시 모아서) 저장한다. 저장(제출) 완료·훈련 종료·내 기록 이동·로그아웃 때 지운다.
-// - 이어가기: 같은 탭·같은 주소·같은 본문(해시)·같은 계정일 때만. 초급 AI 후보는 다시 요청하지 않는다.
+// - 이어가기: 같은 탭·같은 주소·같은 글·같은 계정일 때만. 같은 글은 본문 해시 일치, 또는 웹 기사면 같은 제목 + 본문 유사도(draftSameArticle). 초급 AI 후보는 다시 요청하지 않는다.
 // - 다시 말하기·정리 단계에서 패널을 닫으면 원문 가림이 풀리므로, 이어갈 때는 원문 재확인으로 기록한다.
 const draftStore = TrainingDraft.createStore(globalThis.chrome?.storage?.session);
 let draftTimer = null, draftBusy = false, draftOffer = null, draftHashCache = {text: null, hash: null};
@@ -14,6 +14,20 @@ function draftOwnerRaw() {
 async function draftTextHash(text) {
   if (draftHashCache.text !== text) draftHashCache = {text, hash: await TrainingDraft.sha256(text)};
   return draftHashCache.hash;
+}
+// 임시저장에 담긴 처음 불러온 본문. 해시가 맞을 때만 믿는다.
+async function draftOriginalText(draft) {
+  const text = draft.article.text;
+  return typeof text === 'string' && await TrainingDraft.sha256(text) === draft.article.textHash ? text : null;
+}
+// 이어갈 수 있는 같은 글인지: 본문 해시가 같으면 그대로 통과.
+// 웹 기사는 주소(draftResume에서 확인)·제목·본문 유사도가 맞으면 같은 글로 본다(2026-11-18 완화, 초급·중급 공통).
+// 이 경우 이어가기는 처음 불러온 본문으로 한다(draftResume). PDF는 해시 일치만.
+async function draftSameArticle(draft, session) {
+  if (await draftTextHash(session.text) === draft.article.textHash) return true;
+  if (draft.article.kind !== 'web' || session.kind !== 'web') return false;
+  const original = await draftOriginalText(draft);
+  return original !== null && TrainingDraft.sameArticle({title: draft.article.title, text: original}, {title: session.title, text: session.text});
 }
 function draftStep() {
   for (const id of ['review-view', 'retell-view', 'reading']) if (!draftEl(id).hidden) return id;
@@ -32,7 +46,8 @@ async function draftCollect() {
   const draft = {
     version: TrainingDraft.VERSION, savedAt: Date.now(), owner: await TrainingDraft.ownerKey(draftOwnerRaw()),
     step: draftStep(), rechecked: rechecked === true,
-    article: {kind: session.kind, tabId: session.tabId, windowId: session.windowId, url: session.url, textHash: await draftTextHash(session.text)},
+    article: {kind: session.kind, tabId: session.tabId, windowId: session.windowId, url: session.url, textHash: await draftTextHash(session.text),
+      ...(session.kind === 'web' ? {title: typeof session.title === 'string' ? session.title.slice(0, 1000) : '', ...(session.text.length <= TrainingDraft.MAX_ARTICLE_TEXT ? {text: session.text} : {})} : {})},
     fields, checks, pdf: session.kind === 'pdf' && pdfWorksheet ? pdfWorksheet.snapshot() : null, guided
   };
   return articleSession === session ? draft : null;
@@ -80,16 +95,20 @@ async function draftResume() {
     const panelWindow = await chrome.windows.getCurrent();
     let tab = null;
     try { tab = await chrome.tabs.get(draft.article.tabId); } catch { tab = null; }
-    if (!tab || tab.url !== draft.article.url) { draftMessage('원래 글 탭을 찾을 수 없습니다. 글 탭이 닫혔거나 주소가 바뀌었으면 이어갈 수 없습니다. 같은 글을 다시 열어도 이어지지 않으니, 필요하면 「삭제하고 새로 시작」을 누르세요.'); return; }
+    if (!tab || !sameArticleUrl(tab.url, draft.article.url)) { draftMessage('원래 글 탭을 찾을 수 없습니다. 글 탭이 닫혔거나 주소가 바뀌었으면 이어갈 수 없습니다. 같은 글을 다시 열어도 이어지지 않으니, 필요하면 「삭제하고 새로 시작」을 누르세요.'); return; }
     if (tab.windowId !== panelWindow?.id) { draftMessage('원래 글 탭이 다른 창에 있습니다. 그 창에서 사이드 패널을 열어 이어가세요.'); return; }
     if (tab.active === false) await chrome.tabs.update(tab.id, {active: true});
     draftOffer = null; draftEl('draft-resume').hidden = true;
     await connectCurrentTab({skipConfirm: true, resume: true});
-    if (!articleSession || articleSession.tabId !== tab.id || articleSession.kind !== draft.article.kind || await draftTextHash(articleSession.text) !== draft.article.textHash) {
+    if (!articleSession || articleSession.tabId !== tab.id || articleSession.kind !== draft.article.kind || !await draftSameArticle(draft, articleSession)) {
       draftShowOffer(draft);
-      draftMessage('글 내용이 임시저장할 때와 달라 이어갈 수 없습니다. 원래 글을 다시 확인하거나 「삭제하고 새로 시작」을 누르세요.');
+      draftMessage('글 제목이나 본문 대부분이 임시저장할 때와 달라 이어갈 수 없습니다. 글이 다 열렸는지 확인하고 다시 누르거나 「삭제하고 새로 시작」을 누르세요.');
       return;
     }
+    // 본문 일부가 바뀐 같은 글이면 처음 불러온 본문으로 이어간다(초급 후보·배치의 문장 ID, 기록·피드백 기준 유지).
+    // 페이지 쪽 가림 대상은 방금 읽은 본문 기준으로 content.js가 따로 관리한다.
+    const original = await draftOriginalText(draft);
+    if (original !== null && articleSession.text !== original) articleSession.text = original;
     await draftApply(draft);
   } catch (error) {
     if (!draftOffer) draftShowOffer(draft);

@@ -23,6 +23,7 @@
   <script src="submission-demo.js" defer></script>
   <!-- @development-end -->
   <script src="sentence-source.js" defer></script>
+  <script src="sentence-filter.js" defer></script>
   <script src="reading-support-contract.js" defer></script>
   <script src="learning-support.js" defer></script>
   <script src="reading-support.js" defer></script>
@@ -203,7 +204,16 @@
         <button id="guided-manual" type="button">직접 작성으로 계속</button>
         <div id="guided-graph-controls">
           <h3>문장 후보</h3><ol id="guided-candidates"></ol>
-          <details id="guided-source-picker"><summary>원문에서 추가</summary><ol id="guided-source-list"></ol></details>
+          <details id="guided-source-picker"><summary>원문에서 추가</summary>
+            <div class="guided-source-tools">
+              <label for="guided-source-search">문장 검색</label>
+              <input id="guided-source-search" type="search" autocomplete="off" spellcheck="false" placeholder="단어로 원문 문장 찾기">
+              <p id="guided-source-count" class="hint" role="status" aria-live="polite"></p>
+              <button id="guided-source-hidden" type="button" class="quiet" aria-pressed="false" hidden>숨긴 문장 보기</button>
+            </div>
+            <ol id="guided-source-list"></ol>
+            <p id="guided-source-empty" class="hint" hidden>찾는 문장이 없습니다. 다른 단어로 검색하거나 숨긴 문장 보기를 켜 보세요.</p>
+          </details>
           <h3>문장 블록 배치·연결</h3>
           <p id="guided-board-hint" class="hint" role="status" aria-live="polite">문장을 고르고 역할 자리에 놓으세요. 블록의 + 연결점끼리 끌거나 차례로 눌러 연결할 수 있습니다.</p>
           <div id="guided-nodes" class="guided-board" role="group" aria-label="내가 배치한 문장 블록"></div>
